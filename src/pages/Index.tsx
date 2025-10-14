@@ -1,14 +1,19 @@
 import { useState, useMemo } from "react";
 import { parseCSV, generateSampleData } from "@/lib/csvParser";
 import { calculateAssigneeMetrics, calculateZScores, calculateFunctionMetrics, applyFilters } from "@/lib/metrics";
-import { ParsedTicket, Filters, FunctionType } from "@/types/openproject";
+import { ParsedTicket, Filters, FunctionType, Thresholds } from "@/types/openproject";
+import { loadThresholds, saveThresholds } from "@/lib/thresholds";
+import { generateAlerts } from "@/lib/alerts";
 import { CSVUpload } from "@/components/Dashboard/CSVUpload";
 import { FilterSidebar } from "@/components/Dashboard/FilterSidebar";
 import { KPICards } from "@/components/Dashboard/KPICards";
 import { FunctionPerformance } from "@/components/Dashboard/FunctionPerformance";
 import { TopContributors } from "@/components/Dashboard/TopContributors";
+import { AlertsBar } from "@/components/Dashboard/AlertsBar";
+import { SettingsModal } from "@/components/Dashboard/SettingsModal";
 import { Button } from "@/components/ui/button";
-import { FileDown, RefreshCw } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { FileDown, RefreshCw, Settings } from "lucide-react";
 import { toast } from "sonner";
 
 const FUNCTIONS: FunctionType[] = [
@@ -26,6 +31,14 @@ const Index = () => {
     selectedSprints: [],
     includeAllStatuses: false,
   });
+  const [thresholds, setThresholds] = useState<Thresholds>(loadThresholds());
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  const handleSaveThresholds = (newThresholds: Thresholds) => {
+    setThresholds(newThresholds);
+    saveThresholds(newThresholds);
+    toast.success("Settings saved successfully");
+  };
 
   const handleFileSelect = async (file: File) => {
     try {
@@ -93,6 +106,16 @@ const Index = () => {
     };
   }, [filteredTickets, assigneeMetrics]);
 
+  const alerts = useMemo(
+    () => generateAlerts(assigneeMetrics, functionMetrics, thresholds),
+    [assigneeMetrics, functionMetrics, thresholds]
+  );
+
+  const excludedCount = useMemo(
+    () => (filters.includeAllStatuses ? 0 : tickets.filter((t) => t.status !== "Closed").length),
+    [tickets, filters.includeAllStatuses]
+  );
+
   const projects = useMemo(() => Array.from(new Set(tickets.map((t) => t.project))), [tickets]);
   const sprints = useMemo(() => Array.from(new Set(tickets.map((t) => t.sprintClosed).filter(Boolean))), [tickets]);
 
@@ -111,11 +134,22 @@ const Index = () => {
             <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
               OpenProject Insight Hub
             </h1>
-            <p className="text-muted-foreground mt-2">
-              {filteredTickets.length} tickets • Last updated: {new Date().toLocaleDateString()}
-            </p>
+            <div className="flex items-center gap-3 mt-2">
+              <p className="text-muted-foreground">
+                {filteredTickets.length} tickets • Last updated: {new Date().toLocaleDateString()}
+              </p>
+              {!filters.includeAllStatuses && (
+                <Badge variant="outline" className="text-xs">
+                  Closed only ({excludedCount} excluded)
+                </Badge>
+              )}
+            </div>
           </div>
           <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)}>
+              <Settings className="h-4 w-4 mr-2" />
+              Settings
+            </Button>
             <Button variant="outline" size="sm" onClick={handleReset}>
               <RefreshCw className="h-4 w-4 mr-2" />
               Reset
@@ -127,8 +161,13 @@ const Index = () => {
           </div>
         </div>
 
+        {/* Alerts Bar */}
+        <AlertsBar alerts={alerts} />
+
         {/* KPI Cards */}
-        <KPICards {...kpiData} />
+        <div className="mt-6">
+          <KPICards {...kpiData} />
+        </div>
 
         {/* Function Performance */}
         <FunctionPerformance functionMetrics={functionMetrics} />
@@ -138,6 +177,13 @@ const Index = () => {
           <TopContributors metrics={assigneeMetrics} />
         </div>
       </div>
+
+      <SettingsModal
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        thresholds={thresholds}
+        onSave={handleSaveThresholds}
+      />
     </div>
   );
 };

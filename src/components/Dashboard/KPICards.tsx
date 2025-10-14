@@ -47,7 +47,7 @@ export const KPICards = ({
       gradient: "from-danger/20 to-danger/5",
     },
     {
-      label: "Avg Utilization",
+      label: "Median SP/Person",
       value: avgUtilization.toFixed(1),
       icon: Users,
       color: "text-accent",

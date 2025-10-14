@@ -21,6 +21,17 @@ export const parseCSV = (file: File): Promise<ParsedTicket[]> => {
   });
 };
 
+const normalizeType = (type: string): "Feature" | "Bug" | "Regression" | "Improvement" | "Release" | "Task" | "Other" => {
+  const lower = type.toLowerCase();
+  if (lower === "feature") return "Feature";
+  if (lower === "bug" || lower.includes("bug")) return "Bug";
+  if (lower === "regression") return "Regression";
+  if (lower === "improvement") return "Improvement";
+  if (lower === "release") return "Release";
+  if (lower === "task") return "Task";
+  return "Other";
+};
+
 const parseRow = (row: CSVRow): ParsedTicket | null => {
   try {
     const storyPoints = parseInt(row["Story Points"] || "0", 10) || 0;
@@ -32,21 +43,26 @@ const parseRow = (row: CSVRow): ParsedTicket | null => {
       : null;
 
     const subject = row.Subject || "";
-    const isRevise = subject.toLowerCase().includes("revise") || 
+    const type = row.Type || "Task";
+    const normalizedType = normalizeType(type);
+    
+    const isRevise = subject.toLowerCase().startsWith("revise") || 
                      subject.toLowerCase().includes("[revise]");
+    const isBug = normalizedType === "Bug" || type.toLowerCase().includes("bug");
 
     return {
       assignee: row.Assignee || "Unassigned",
       function: row.Function,
       status: row.Status,
       storyPoints,
-      type: row.Type || "Task",
+      type,
+      normalizedType,
       project: row.Project || "Unknown",
       sprintClosed: row["Sprint Closed"] || "",
       createdDate,
       closedDate,
       subject,
-      isBug: row.Type?.toLowerCase() === "bug",
+      isBug,
       isRevise,
       cycleDays,
     };
@@ -79,12 +95,14 @@ export const generateSampleData = (): ParsedTicket[] => {
     const isBug = Math.random() < 0.2;
     const isRevise = isBug && Math.random() < 0.3;
 
+    const type = isBug ? "Bug" : Math.random() < 0.5 ? "Feature" : "Task";
     tickets.push({
       assignee: assignee.name,
       function: assignee.function,
       status: "Closed",
       storyPoints: Math.floor(Math.random() * 8) + 1,
-      type: isBug ? "Bug" : Math.random() < 0.5 ? "Feature" : "Task",
+      type,
+      normalizedType: normalizeType(type),
       project: projects[Math.floor(Math.random() * projects.length)],
       sprintClosed: sprints[Math.floor(Math.random() * sprints.length)],
       createdDate,

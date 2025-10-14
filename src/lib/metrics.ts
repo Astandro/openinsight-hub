@@ -19,6 +19,9 @@ export const calculateAssigneeMetrics = (
     : 0;
 
   const totalClosedStoryPoints = closedTickets.reduce((sum, t) => sum + t.storyPoints, 0);
+  
+  const sprintsParticipated = new Set(closedTickets.map(t => t.sprintClosed).filter(Boolean)).size;
+  const velocityPerSprint = sprintsParticipated > 0 ? totalClosedStoryPoints / sprintsParticipated : 0;
 
   return {
     assignee,
@@ -30,6 +33,8 @@ export const calculateAssigneeMetrics = (
     bugRateClosed: closedTickets.length > 0 ? bugCountClosed / closedTickets.length : 0,
     reviseRateClosed: bugCountClosed > 0 ? reviseCountClosed / bugCountClosed : 0,
     avgCycleTimeDays,
+    sprintsParticipated,
+    velocityPerSprint,
   };
 };
 

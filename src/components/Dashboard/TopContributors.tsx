@@ -85,23 +85,28 @@ export const TopContributors = ({ metrics }: TopContributorsProps) => {
               </div>
 
               {/* Badges */}
-              <div className="flex flex-wrap gap-2 mb-3">
-                <Badge variant="outline" className="gap-1">
-                  <Target className="h-3 w-3" />
-                  {contributor.totalClosedStoryPoints} SP
-                </Badge>
-                <Badge variant="outline" className="gap-1">
-                  <Package className="h-3 w-3" />
-                  {contributor.totalClosedTickets} tickets
-                </Badge>
-                <Badge variant="outline" className="gap-1">
-                  <Bug className="h-3 w-3" />
-                  {contributor.bugCountClosed} bugs
-                </Badge>
-                <Badge variant="outline" className="gap-1">
-                  <RotateCcw className="h-3 w-3" />
-                  {contributor.reviseCountClosed} revise
-                </Badge>
+              {/* Metrics Grid */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+                <div className="flex items-center gap-1.5 text-sm">
+                  <Target className="h-4 w-4 text-primary" />
+                  <span className="font-semibold">{contributor.totalClosedStoryPoints}</span>
+                  <span className="text-muted-foreground text-xs">SP</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-sm">
+                  <Package className="h-4 w-4 text-muted" />
+                  <span className="font-semibold">{contributor.totalClosedTickets}</span>
+                  <span className="text-muted-foreground text-xs">Tickets</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-sm">
+                  <Bug className="h-4 w-4 text-danger" />
+                  <span className="font-semibold">{contributor.bugCountClosed}</span>
+                  <span className="text-muted-foreground text-xs">Bugs</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-sm">
+                  <RotateCcw className="h-4 w-4 text-warning" />
+                  <span className="font-semibold">{contributor.reviseCountClosed}</span>
+                  <span className="text-muted-foreground text-xs">Revise</span>
+                </div>
               </div>
 
               {/* Horizontal Stacked Bar */}

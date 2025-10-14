@@ -42,6 +42,7 @@ export interface ParsedTicket {
   isBug: boolean;
   isRevise: boolean;
   cycleDays: number | null;
+  normalizedType: "Feature" | "Bug" | "Regression" | "Improvement" | "Release" | "Task" | "Other";
 }
 
 export interface AssigneeMetrics {
@@ -55,6 +56,8 @@ export interface AssigneeMetrics {
   reviseRateClosed: number;
   avgCycleTimeDays: number;
   zScore: number;
+  sprintsParticipated: number;
+  velocityPerSprint: number;
 }
 
 export interface FunctionMetrics {
@@ -75,4 +78,21 @@ export interface Filters {
   timePeriod: "1q" | "2q" | "3q" | "all";
   selectedSprints: string[];
   includeAllStatuses: boolean;
+}
+
+export interface Thresholds {
+  topPerformerZ: number;
+  lowPerformerZ: number;
+  highBugRate: number;
+  highReviseRate: number;
+  overloadedMultiplier: number;
+  underutilizedMultiplier: number;
+}
+
+export interface Alert {
+  type: "top-performer" | "low-performer" | "high-bug" | "high-revise" | "overloaded" | "underutilized";
+  message: string;
+  assignee?: string;
+  function?: FunctionType;
+  value?: number;
 }

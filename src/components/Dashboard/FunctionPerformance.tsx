@@ -58,8 +58,11 @@ export const FunctionPerformance = ({ functionMetrics }: FunctionPerformanceProp
           {functionMetrics.map((fm) => (
             <div key={fm.function} className="p-3 bg-secondary/30 rounded-lg">
               <div className="text-sm font-medium mb-1">{fm.function}</div>
-              <div className="text-xs text-muted-foreground">
-                {fm.memberCount} members • {(fm.bugRate * 100).toFixed(1)}% bugs
+              <div className="text-xs text-muted-foreground space-y-0.5">
+                <div>Members: {fm.memberCount}</div>
+                <div>Avg SP: {fm.avgStoryPoints.toFixed(1)} (σ {fm.stdDevStoryPoints.toFixed(1)})</div>
+                <div>Bug Rate: {(fm.bugRate * 100).toFixed(1)}%</div>
+                <div>Revise Rate: {(fm.reviseRate * 100).toFixed(1)}%</div>
               </div>
             </div>
           ))}
