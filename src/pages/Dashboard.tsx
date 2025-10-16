@@ -3,7 +3,7 @@ import { parseCSV } from "@/lib/csvParser";
 import { loadSampleData } from "@/lib/sampleData";
 import { calculateAssigneeMetrics, calculateEnhancedMetrics, calculateFunctionMetrics, applyFilters } from "@/lib/metrics";
 import { ParsedTicket, Filters, FunctionType, Thresholds } from "@/types/openproject";
-import { loadThresholds, saveThresholds } from "@/lib/thresholds";
+// Removed localStorage threshold imports - now using server-based thresholds
 import { generateAlerts } from "@/lib/alerts";
 import { FUNCTIONS } from "@/lib/constants";
 import { FilterSidebar } from "@/components/Dashboard/FilterSidebar";
@@ -14,7 +14,7 @@ import { AlertsBar } from "@/components/Dashboard/AlertsBar";
 import { Heatmap, type HeatmapDatum } from "@/components/Dashboard/Heatmap";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { FileDown, RefreshCw, Settings, LogIn, Download, X } from "lucide-react";
+import { FileDown, RefreshCw, Settings, LogIn, Download, X, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { BrandLogo } from "@/components/ui/brand-logo";
@@ -36,48 +36,82 @@ const Dashboard = () => {
     timePeriod: "all",
     includeAllStatuses: false,
   });
-  const [thresholds, setThresholds] = useState<Thresholds>(loadThresholds());
+  const [thresholds, setThresholds] = useState<Thresholds>(() => {
+    // Initialize with default thresholds, will be updated from server
+    return {
+      topPerformerZ: 1.0,
+      lowPerformerZ: -1.0,
+      highBugRate: 0.25,
+      highReviseRate: 0.20,
+      overloadedMultiplier: 1.3,
+      underutilizedMultiplier: 0.6,
+      storyPointsWeight: 0.5,
+      ticketCountWeight: 0.25,
+      projectVarietyWeight: 0.25,
+      reviseRatePenalty: 0.8,
+      bugRatePenalty: 0.5,
+      underutilizedThreshold: 0.6,
+      activeWeeksThreshold: 0.7,
+    };
+  });
   const [showLogin, setShowLogin] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState<number>(Date.now());
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Function to refresh data from server
+  const refreshData = async () => {
+    setIsRefreshing(true);
+    try {
+      const serverData = await fetchData();
+      
+      if (serverData.tickets && serverData.tickets.length > 0) {
+        setTickets(serverData.tickets);
+      } else {
+        // Load sample data if no data exists on server
+        const sampleData = loadSampleData();
+        setTickets(sampleData);
+        // Save sample data to server
+        await saveDataToAPI({ tickets: sampleData });
+      }
+      
+      if (serverData.filters) {
+        setFilters(serverData.filters);
+      }
+      
+      if (serverData.thresholds) {
+        setThresholds(serverData.thresholds);
+      }
+      
+      setLastRefresh(Date.now());
+    } catch (error) {
+      console.error('Failed to load data from server:', error);
+      // Fallback to sample data
+      const sampleData = loadSampleData();
+      setTickets(sampleData);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   // Load persisted data on mount
   useEffect(() => {
-    const loadDataFromServer = async () => {
-      try {
-        const serverData = await fetchData();
-        
-        if (serverData.tickets && serverData.tickets.length > 0) {
-          setTickets(serverData.tickets);
-        } else {
-          // Load sample data if no data exists on server
-          const sampleData = loadSampleData();
-          setTickets(sampleData);
-          // Save sample data to server
-          await saveDataToAPI({ tickets: sampleData });
-        }
-        
-        if (serverData.filters) {
-          setFilters(serverData.filters);
-        }
-        
-        if (serverData.thresholds) {
-          setThresholds(serverData.thresholds);
-        }
-      } catch (error) {
-        console.error('Failed to load data from server:', error);
-        // Fallback to sample data
-        const sampleData = loadSampleData();
-        setTickets(sampleData);
-      }
+    refreshData();
 
-      // Check authentication and user role
-      if (isAuthenticated()) {
-        setUserRole(getUserRole());
-        setUsername(localStorage.getItem('teamlight_username') || '');
-      }
-    };
+    // Check authentication and user role
+    if (isAuthenticated()) {
+      setUserRole(getUserRole());
+      setUsername(localStorage.getItem('teamlight_username') || '');
+    }
+  }, []);
 
-    loadDataFromServer();
+  // Periodic refresh to check for threshold updates (every 30 seconds)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refreshData();
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(interval);
   }, []);
 
   // Save data when it changes
@@ -347,11 +381,29 @@ const Dashboard = () => {
                 <h1 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
                   TeamLight
                 </h1>
-                <p className="text-sm text-muted-foreground">Team Performance Analytics</p>
+                <p className="text-sm text-muted-foreground">
+                  Team Performance Analytics
+                  {lastRefresh && (
+                    <span className="ml-2 text-xs">
+                      • Last updated: {new Date(lastRefresh).toLocaleTimeString()}
+                    </span>
+                  )}
+                </p>
               </div>
             </div>
             
             <div className="flex items-center gap-3">
+              <Button
+                variant="outline"
+                onClick={refreshData}
+                className="gap-2"
+                title="Refresh data from server"
+                disabled={isRefreshing}
+              >
+                <RotateCcw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                {isRefreshing ? 'Refreshing...' : 'Refresh'}
+              </Button>
+              
               <Button
                 variant="outline"
                 onClick={handleExportPDF}
