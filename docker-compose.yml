@@ -1,8 +1,30 @@
 version: '3.8'
 
 services:
-  teamlight-app:
-    build: .
+  # Frontend Service (React + Nginx)
+  teamlight-frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - teamlight-backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - teamlight-network
+
+  # Backend API Service
+  teamlight-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "3001:3001"
     environment:
