@@ -1,6 +1,6 @@
 # TeamLight Deployment Guide
 
-## 🐳 Docker Deployment
+## 🐳 Full-Stack Docker Deployment
 
 ### Prerequisites
 - Docker and Docker Compose installed on your VM
@@ -24,10 +24,27 @@
    ```
 
 3. **Access the application:**
-   - Open your browser to `http://your-vm-ip:3001`
+   - **Frontend**: Open your browser to `http://your-vm-ip` (port 80)
+   - **Backend API**: Available at `http://your-vm-ip:3001/api`
    - Login with default credentials:
      - Admin: `admin` / `Admin124$`
      - User: `user` / `user`
+
+### 🏗️ Architecture
+
+The Docker setup includes two services:
+
+- **Frontend Service** (`teamlight-frontend`):
+  - React application built with Vite
+  - Served by Nginx on port 80
+  - Includes API proxy to backend
+  - Static asset caching and compression
+
+- **Backend Service** (`teamlight-backend`):
+  - Express.js API server
+  - Runs on port 3001
+  - Handles authentication and data processing
+  - Includes health checks
 
 ### 🔧 Configuration
 
@@ -69,27 +86,38 @@ docker-compose -f docker-compose.prod.yml up -d
 ### 📋 Available Commands
 
 ```bash
-# Build and run locally
+# Build both frontend and backend
 npm run docker:build
+
+# Start full-stack application
 npm run docker:run
+# or
+docker-compose up -d
 
 # Docker Compose commands
-npm run docker:compose:up      # Start services
-npm run docker:compose:down    # Stop services
-npm run docker:compose:logs     # View logs
+npm run docker:compose:up      # Start all services
+npm run docker:compose:down    # Stop all services
+npm run docker:compose:logs    # View all logs
+
+# Individual service management
+docker-compose up -d teamlight-frontend    # Start only frontend
+docker-compose up -d teamlight-backend     # Start only backend
+docker-compose logs -f teamlight-frontend  # Frontend logs only
+docker-compose logs -f teamlight-backend  # Backend logs only
 
 # Or use docker-compose directly
-docker-compose up -d           # Start in background
-docker-compose down            # Stop services
-docker-compose logs -f         # Follow logs
-docker-compose restart         # Restart services
+docker-compose up -d           # Start all services
+docker-compose down            # Stop all services
+docker-compose logs -f         # Follow all logs
+docker-compose restart         # Restart all services
 ```
 
 ### 🔍 Health Checks
 
-The application includes health checks:
-- Health endpoint: `http://localhost:3001/api/health`
-- Docker health check runs every 30 seconds
+The application includes health checks for both services:
+- **Frontend**: `http://localhost/health` (Nginx health check)
+- **Backend**: `http://localhost:3001/api/health` (API health check)
+- Docker health checks run every 30 seconds for both services
 
 ### 🛠️ Troubleshooting
 

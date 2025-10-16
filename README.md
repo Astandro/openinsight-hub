@@ -143,18 +143,19 @@ Clone this repo and work locally. Pushed changes will be reflected in Lovable.
 
 ### Quick Start with Docker
 
-The easiest way to deploy TeamLight is using Docker Compose:
+The easiest way to deploy TeamLight is using Docker Compose (full-stack):
 
 ```bash
 # Clone the repository
 git clone <your-repo-url>
 cd openinsight-hub
 
-# Deploy with Docker Compose
+# Deploy with Docker Compose (frontend + backend)
 docker-compose up -d
 
 # Access the application
-# Open http://localhost:3001 in your browser
+# Frontend: http://localhost (port 80)
+# Backend API: http://localhost:3001/api
 ```
 
 ### Default Credentials
