@@ -35,30 +35,16 @@ const AUTH_CONFIG = {
 // Active sessions (in production, use Redis or database)
 const activeSessions = new Map();
 
-// Helper function to hash password
-const hashPassword = async (password) => {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(password + 'teamlight_salt_2024');
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-};
-
 // Helper function to generate session token
 const generateSessionToken = () => {
   return crypto.randomBytes(32).toString('hex');
 };
 
-// Helper function to validate credentials
-const validateCredentials = async (username, password) => {
-  const hashedPassword = await hashPassword(password);
-  
+// Simple credential validation (direct string comparison)
+const validateCredentials = (username, password) => {
   for (const [key, user] of Object.entries(AUTH_CONFIG)) {
-    if (user.username === username) {
-      const userHashedPassword = await hashPassword(user.password);
-      if (userHashedPassword === hashedPassword) {
-        return { valid: true, role: user.role };
-      }
+    if (user.username === username && user.password === password) {
+      return { valid: true, role: user.role };
     }
   }
   
@@ -66,7 +52,7 @@ const validateCredentials = async (username, password) => {
 };
 
 // Authentication Routes
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', (req, res) => {
   try {
     const { username, password } = req.body;
     
@@ -74,7 +60,7 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(400).json({ error: 'Username and password are required' });
     }
     
-    const result = await validateCredentials(username, password);
+    const result = validateCredentials(username, password);
     
     if (result.valid) {
       const sessionToken = generateSessionToken();
