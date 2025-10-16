@@ -7,8 +7,7 @@ export type FunctionType =
   | "INFRA" 
   | "BUSINESS SUPPORT" 
   | "RESEARCHER" 
-  | "PRINCIPAL" 
-  | "COORDINATOR" 
+  | "FOUNDRY" 
   | "UX WRITER";
 
 export type StatusType = "Closed" | "Open" | "In Progress" | "Review" | string;
@@ -58,6 +57,13 @@ export interface AssigneeMetrics {
   zScore: number;
   sprintsParticipated: number;
   velocityPerSprint: number;
+  // Enhanced performance metrics
+  projectVariety: number;
+  effectiveStoryPoints: number;
+  performanceScore: number;
+  utilizationIndex: number;
+  activeWeeks: number;
+  flags: string[];
 }
 
 export interface FunctionMetrics {
@@ -75,7 +81,7 @@ export interface Filters {
   searchAssignee: string;
   selectedProject: string | null;
   selectedFunction: FunctionType | null;
-  timePeriod: "1q" | "2q" | "3q" | "all";
+  timePeriod: "1q" | "2q" | "3q" | "4q" | "all";
   selectedSprints: string[];
   includeAllStatuses: boolean;
 }
@@ -87,6 +93,14 @@ export interface Thresholds {
   highReviseRate: number;
   overloadedMultiplier: number;
   underutilizedMultiplier: number;
+  // Performance scoring weights
+  storyPointsWeight: number;
+  ticketCountWeight: number;
+  projectVarietyWeight: number;
+  reviseRatePenalty: number;
+  bugRatePenalty: number;
+  underutilizedThreshold: number;
+  activeWeeksThreshold: number;
 }
 
 export interface Alert {

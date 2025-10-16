@@ -1,12 +1,82 @@
-# Welcome to your Lovable project
+# TeamLight - Team Performance Analytics Dashboard
 
-## Project info
+A comprehensive team performance analytics dashboard built with React, TypeScript, and modern web technologies. TeamLight provides insights into team productivity, performance metrics, and workload distribution through interactive visualizations and detailed reporting.
 
-**URL**: https://lovable.dev/projects/1fcbefa1-06c4-448a-be72-5968269a1aa0
+## 🚀 Features
 
-## How can I edit this code?
+- **Interactive Dashboard**: Real-time performance metrics and KPIs
+- **Team Analytics**: Individual and team-level performance insights
+- **Data Visualization**: Heatmaps, charts, and performance indicators
+- **CSV Data Import**: Upload and analyze project data
+- **PDF Reports**: Generate comprehensive performance reports
+- **Role-based Access**: Admin and user roles with different permissions
+- **Server-side Authentication**: Secure login system
+- **Docker Deployment**: Easy deployment with Docker and Docker Compose
 
-There are several ways of editing your application.
+## 🛠️ Tech Stack
+
+- **Frontend**: React 18, TypeScript, Vite
+- **UI Components**: shadcn/ui, Tailwind CSS
+- **Charts**: Recharts
+- **Backend**: Express.js, Node.js
+- **Authentication**: Server-side with JWT tokens
+- **Deployment**: Docker, Docker Compose
+- **Data Processing**: Papa Parse (CSV), PDF generation
+
+## 📊 Project Info
+
+**Lovable URL**: https://lovable.dev/projects/1fcbefa1-06c4-448a-be72-5968269a1aa0
+
+## 💻 Development
+
+### Prerequisites
+- Node.js 18+ and npm
+- Docker and Docker Compose (for containerized development)
+
+### Local Development Setup
+
+```bash
+# Clone the repository
+git clone <your-repo-url>
+cd openinsight-hub
+
+# Install dependencies
+npm install
+
+# Start development server (requires both client and server)
+npm run dev:full
+
+# Or start them separately:
+# Terminal 1: Start the API server
+npm run server
+
+# Terminal 2: Start the frontend dev server
+npm run dev
+```
+
+### Available Scripts
+
+```bash
+# Development
+npm run dev              # Start frontend dev server
+npm run server           # Start API server
+npm run dev:full         # Start both client and server
+
+# Building
+npm run build            # Build for production
+npm run preview          # Preview production build
+
+# Docker
+npm run docker:build     # Build Docker image
+npm run docker:run       # Run Docker container
+npm run docker:compose:up    # Start with Docker Compose
+npm run docker:compose:down   # Stop Docker Compose services
+
+# Utilities
+npm run lint             # Run ESLint
+```
+
+### Development Options
 
 **Use Lovable**
 
@@ -16,25 +86,14 @@ Changes made via Lovable will be committed automatically to this repo.
 
 **Use your preferred IDE**
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+Clone this repo and work locally. Pushed changes will be reflected in Lovable.
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+**Use GitHub Codespaces**
 
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
+- Navigate to the main page of your repository
+- Click on the "Code" button (green button) near the top right
+- Select the "Codespaces" tab
+- Click on "New codespace" to launch a new Codespace environment
 
 **Edit a file directly in GitHub**
 
@@ -50,19 +109,72 @@ npm run dev
 - Click on "New codespace" to launch a new Codespace environment.
 - Edit files directly within the Codespace and commit and push your changes once you're done.
 
-## What technologies are used for this project?
+## 🛠️ Architecture
 
-This project is built with:
+### Frontend
+- **React 18** with TypeScript
+- **Vite** for fast development and building
+- **shadcn/ui** for modern UI components
+- **Tailwind CSS** for styling
+- **Recharts** for data visualization
+- **Framer Motion** for animations
+- **React Router** for navigation
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+### Backend
+- **Express.js** API server
+- **Node.js** runtime
+- **CORS** for cross-origin requests
+- **dotenv** for environment variables
+- **Web Crypto API** for secure authentication
 
-## How can I deploy this project?
+### Data & Analytics
+- **Papa Parse** for CSV processing
+- **jsPDF** for report generation
+- **Custom metrics engine** for performance calculations
+- **Z-score analysis** for statistical insights
 
-Simply open [Lovable](https://lovable.dev/projects/1fcbefa1-06c4-448a-be72-5968269a1aa0) and click on Share -> Publish.
+### Deployment
+- **Docker** containerization
+- **Docker Compose** for orchestration
+- **Multi-stage builds** for optimization
+- **Health checks** for monitoring
+
+## 🐳 Deployment
+
+### Quick Start with Docker
+
+The easiest way to deploy TeamLight is using Docker Compose:
+
+```bash
+# Clone the repository
+git clone <your-repo-url>
+cd openinsight-hub
+
+# Deploy with Docker Compose
+docker-compose up -d
+
+# Access the application
+# Open http://localhost:3001 in your browser
+```
+
+### Default Credentials
+- **Admin**: `admin` / `Admin124$`
+- **User**: `user` / `user`
+
+### Production Deployment
+
+For production deployment, see the comprehensive [**Deployment Guide**](./DEPLOYMENT.md) which includes:
+
+- 🐳 Docker and Docker Compose setup
+- 🔧 Environment configuration
+- 🔒 Security best practices
+- 📊 Monitoring and health checks
+- 🛠️ Troubleshooting guide
+- 🌐 Reverse proxy setup
+
+### Lovable Deployment
+
+You can also deploy using [Lovable](https://lovable.dev/projects/1fcbefa1-06c4-448a-be72-5968269a1aa0) by clicking Share -> Publish.
 
 ## Can I connect a custom domain to my Lovable project?
 

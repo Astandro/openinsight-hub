@@ -1,24 +1,14 @@
 import Papa from "papaparse";
 import { CSVRow, ParsedTicket } from "@/types/openproject";
 
-export const parseCSV = (file: File): Promise<ParsedTicket[]> => {
-  return new Promise((resolve, reject) => {
-    Papa.parse<CSVRow>(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: (results) => {
-        try {
-          const tickets = results.data.map((row) => parseRow(row));
-          resolve(tickets.filter((t) => t !== null) as ParsedTicket[]);
-        } catch (error) {
-          reject(error);
-        }
-      },
-      error: (error) => {
-        reject(error);
-      },
-    });
+export const parseCSV = (csvText: string): ParsedTicket[] => {
+  const results = Papa.parse<CSVRow>(csvText, {
+    header: true,
+    skipEmptyLines: true,
   });
+  
+  const tickets = results.data.map((row) => parseRow(row));
+  return tickets.filter((t) => t !== null) as ParsedTicket[];
 };
 
 const normalizeType = (type: string): "Feature" | "Bug" | "Regression" | "Improvement" | "Release" | "Task" | "Other" => {
@@ -35,8 +25,8 @@ const normalizeType = (type: string): "Feature" | "Bug" | "Regression" | "Improv
 const parseRow = (row: CSVRow): ParsedTicket | null => {
   try {
     const storyPoints = parseInt(row["Story Points"] || "0", 10) || 0;
-    const createdDate = new Date(row["Created Date"]);
-    const closedDate = row["Closed Date"] ? new Date(row["Closed Date"]) : null;
+    const createdDate = new Date(row["Created At"]);
+    const closedDate = row["Closed Date"] ? new Date(row["Updated At"]) : null;
     
     const cycleDays = closedDate 
       ? Math.round((closedDate.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24))
@@ -47,7 +37,7 @@ const parseRow = (row: CSVRow): ParsedTicket | null => {
     const normalizedType = normalizeType(type);
     
     const isRevise = subject.toLowerCase().startsWith("revise") || 
-                     subject.toLowerCase().includes("[revise]");
+                     subject.toLowerCase().includes("revise");
     const isBug = normalizedType === "Bug" || type.toLowerCase().includes("bug");
 
     return {
