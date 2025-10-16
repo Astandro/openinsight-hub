@@ -162,6 +162,15 @@ docker-compose up -d
 - **Admin**: `admin` / `Admin124$`
 - **User**: `user` / `user`
 
+### Environment Configuration
+The application uses environment variables for configuration:
+
+- **`VITE_API_BASE_URL`**: Frontend API endpoint (default: `http://10.110.11.37:3001/api`)
+- **`ADMIN_USERNAME`**: Admin username (default: `admin`)
+- **`ADMIN_PASSWORD`**: Admin password (default: `Admin124$`)
+- **`USER_USERNAME`**: User username (default: `user`)
+- **`USER_PASSWORD`**: User password (default: `user`)
+
 ### Production Deployment
 
 For production deployment, see the comprehensive [**Deployment Guide**](./DEPLOYMENT.md) which includes:

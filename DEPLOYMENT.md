@@ -53,7 +53,10 @@ The Docker setup includes two services:
 Create a `.env` file in the project root to customize settings:
 
 ```env
-# Server Configuration
+# Frontend Configuration
+VITE_API_BASE_URL=http://10.110.11.37:3001/api
+
+# Backend Configuration
 NODE_ENV=production
 PORT=3001
 

@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://localhost:3001/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://10.110.11.37:3001/api';
 
 export interface LoginResponse {
   success: boolean;
