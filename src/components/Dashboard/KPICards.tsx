@@ -3,52 +3,56 @@ import { Card } from "@/components/ui/card";
 import { motion } from "framer-motion";
 
 interface KPICardsProps {
-  totalClosedTickets: number;
-  totalStoryPoints: number;
-  avgCycleTime: number;
-  bugRate: number;
-  avgUtilization: number;
+  data: {
+    totalClosedTickets: number;
+    totalStoryPoints: number;
+    avgCycleTime: number;
+    bugRate: number;
+    avgUtilization: number;
+  };
+  excludedCount?: number;
 }
 
-export const KPICards = ({
-  totalClosedTickets,
-  totalStoryPoints,
-  avgCycleTime,
-  bugRate,
-  avgUtilization,
-}: KPICardsProps) => {
+export const KPICards = ({ data, excludedCount = 0 }: KPICardsProps) => {
+  const {
+    totalClosedTickets,
+    totalStoryPoints,
+    avgCycleTime,
+    bugRate,
+    avgUtilization,
+  } = data;
   const kpis = [
     {
       label: "Total Closed Tickets",
-      value: totalClosedTickets,
+      value: totalClosedTickets || 0,
       icon: Target,
       color: "text-primary",
       gradient: "from-primary/20 to-primary/5",
     },
     {
       label: "Total Story Points",
-      value: totalStoryPoints,
+      value: totalStoryPoints || 0,
       icon: TrendingUp,
       color: "text-success",
       gradient: "from-success/20 to-success/5",
     },
     {
       label: "Avg Cycle Time",
-      value: `${avgCycleTime.toFixed(1)} days`,
+      value: `${(avgCycleTime || 0).toFixed(1)} days`,
       icon: Clock,
       color: "text-warning",
       gradient: "from-warning/20 to-warning/5",
     },
     {
       label: "Bug Rate",
-      value: `${(bugRate * 100).toFixed(1)}%`,
+      value: `${((bugRate || 0) * 100).toFixed(1)}%`,
       icon: Bug,
       color: "text-danger",
       gradient: "from-danger/20 to-danger/5",
     },
     {
       label: "Median SP/Person",
-      value: avgUtilization.toFixed(1),
+      value: (avgUtilization || 0).toFixed(1),
       icon: Users,
       color: "text-accent",
       gradient: "from-accent/20 to-accent/5",

@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { parseCSV, generateSampleData } from "@/lib/csvParser";
-import { calculateAssigneeMetrics, calculateZScores, calculateFunctionMetrics, applyFilters } from "@/lib/metrics";
+import { calculateAssigneeMetrics, calculateEnhancedMetrics, calculateFunctionMetrics, applyFilters } from "@/lib/metrics";
 import { ParsedTicket, Filters, FunctionType, Thresholds } from "@/types/openproject";
 import { loadThresholds, saveThresholds } from "@/lib/thresholds";
 import { generateAlerts } from "@/lib/alerts";
@@ -11,14 +11,18 @@ import { FunctionPerformance } from "@/components/Dashboard/FunctionPerformance"
 import { TopContributors } from "@/components/Dashboard/TopContributors";
 import { AlertsBar } from "@/components/Dashboard/AlertsBar";
 import { SettingsModal } from "@/components/Dashboard/SettingsModal";
+import { Heatmap, type HeatmapDatum } from "@/components/Dashboard/Heatmap";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FileDown, RefreshCw, Settings } from "lucide-react";
 import { toast } from "sonner";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { BrandLogo } from "@/components/ui/brand-logo";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 const FUNCTIONS: FunctionType[] = [
   "BE", "FE", "QA", "DESIGNER", "PRODUCT", "INFRA",
-  "BUSINESS SUPPORT", "RESEARCHER", "PRINCIPAL", "COORDINATOR", "UX WRITER"
+  "BUSINESS SUPPORT", "RESEARCHER", "FOUNDRY", "UX WRITER"
 ];
 
 const Index = () => {
@@ -42,8 +46,8 @@ const Index = () => {
 
   const handleFileSelect = async (file: File) => {
     try {
-      toast.loading("Parsing CSV...");
-      const parsed = await parseCSV(file);
+      // toast.loading("Parsing CSV...");
+      const parsed = await parseCSV(await file.text());
       setTickets(parsed);
       toast.success(`Loaded ${parsed.length} tickets successfully!`);
     } catch (error) {
@@ -76,8 +80,8 @@ const Index = () => {
   const assigneeMetrics = useMemo(() => {
     const assignees = Array.from(new Set(filteredTickets.map((t) => t.assignee)));
     const metrics = assignees.map((assignee) => calculateAssigneeMetrics(filteredTickets, assignee));
-    return calculateZScores(metrics);
-  }, [filteredTickets]);
+    return calculateEnhancedMetrics(metrics, thresholds, filteredTickets);
+  }, [filteredTickets, thresholds]);
 
   const functionMetrics = useMemo(() => {
     return FUNCTIONS.map((func) => calculateFunctionMetrics(filteredTickets, func)).filter(
@@ -119,6 +123,35 @@ const Index = () => {
   const projects = useMemo(() => Array.from(new Set(tickets.map((t) => t.project))), [tickets]);
   const sprints = useMemo(() => Array.from(new Set(tickets.map((t) => t.sprintClosed).filter(Boolean))), [tickets]);
 
+  const heatmapData: HeatmapDatum[] = useMemo(() => {
+    // Rows: projects, Cols: sprints, Value: closed tickets count (based on filtered tickets)
+    const projectsSet = new Set(filteredTickets.map((t) => t.project));
+    const sprintsSet = new Set(filteredTickets.map((t) => t.sprintClosed).filter(Boolean));
+    const rows = Array.from(projectsSet);
+    
+    // Sort sprints chronologically (oldest to latest)
+    const cols = Array.from(sprintsSet).sort((a, b) => {
+      // Extract sprint number/date for sorting
+      const aNum = parseInt(a.replace(/\D/g, '')) || 0;
+      const bNum = parseInt(b.replace(/\D/g, '')) || 0;
+      return aNum - bNum;
+    });
+    
+    const map = new Map<string, number>();
+    for (const t of filteredTickets) {
+      if (!t.sprintClosed) continue;
+      const key = `${t.project}__${t.sprintClosed}`;
+      map.set(key, (map.get(key) || 0) + (t.status === "Closed" ? 1 : 0));
+    }
+    const data: HeatmapDatum[] = [];
+    for (const r of rows) {
+      for (const c of cols) {
+        data.push({ row: r, col: c, value: map.get(`${r}__${c}`) || 0 });
+      }
+    }
+    return data;
+  }, [filteredTickets]);
+
   if (tickets.length === 0) {
     return <CSVUpload onFileSelect={handleFileSelect} onLoadSample={handleLoadSample} />;
   }
@@ -131,9 +164,12 @@ const Index = () => {
         {/* Header */}
         <div className="mb-8 flex items-center justify-between">
           <div>
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              OpenProject Insight Hub
-            </h1>
+            <div className="flex items-center gap-3">
+              <BrandLogo className="h-8 w-8" />
+              <h1 className="text-4xl font-bold bg-gradient-to-r from-accent to-primary bg-clip-text text-transparent">
+                TeamLight
+              </h1>
+            </div>
             <div className="flex items-center gap-3 mt-2">
               <p className="text-muted-foreground">
                 {filteredTickets.length} tickets • Last updated: {new Date().toLocaleDateString()}
@@ -145,7 +181,23 @@ const Index = () => {
               )}
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="secondary" size="sm">Time: {filters.timePeriod === "all" ? "All" : filters.timePeriod.toUpperCase()}</Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Time Period</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuRadioGroup value={filters.timePeriod} onValueChange={(value) => setFilters({ ...filters, timePeriod: value as any })}>
+                  <DropdownMenuRadioItem value="1q">Last 1 Quarter</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="2q">Last 2 Quarters</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="3q">Last 3 Quarters</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="4q">Last 4 Quarters</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="all">All Time</DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button variant="outline" size="sm" onClick={() => setSettingsOpen(true)}>
               <Settings className="h-4 w-4 mr-2" />
               Settings
@@ -158,6 +210,7 @@ const Index = () => {
               <FileDown className="h-4 w-4 mr-2" />
               Export PDF
             </Button>
+            <ThemeToggle />
           </div>
         </div>
 
@@ -166,7 +219,7 @@ const Index = () => {
 
         {/* KPI Cards */}
         <div className="mt-6">
-          <KPICards {...kpiData} />
+          <KPICards data={kpiData} />
         </div>
 
         {/* Function Performance */}
@@ -174,7 +227,11 @@ const Index = () => {
 
         <div className="mt-6">
           {/* Top Contributors */}
-          <TopContributors metrics={assigneeMetrics} />
+          <TopContributors metrics={assigneeMetrics} tickets={filteredTickets} />
+        </div>
+
+        <div className="mt-6">
+          <Heatmap data={heatmapData} title="Project × Sprint Heatmap" />
         </div>
       </div>
 

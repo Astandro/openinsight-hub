@@ -9,6 +9,14 @@ export const DEFAULT_THRESHOLDS: Thresholds = {
   highReviseRate: 0.20,
   overloadedMultiplier: 1.3,
   underutilizedMultiplier: 0.6,
+  // Performance scoring weights
+  storyPointsWeight: 0.5,
+  ticketCountWeight: 0.25,
+  projectVarietyWeight: 0.25,
+  reviseRatePenalty: 0.8,
+  bugRatePenalty: 0.5,
+  underutilizedThreshold: 0.6,
+  activeWeeksThreshold: 0.7,
 };
 
 export const loadThresholds = (): Thresholds => {

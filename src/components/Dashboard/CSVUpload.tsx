@@ -1,7 +1,8 @@
-import { Upload, FileSpreadsheet } from "lucide-react";
+import { Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { motion } from "framer-motion";
+import { BrandLogo } from "@/components/ui/brand-logo";
 
 interface CSVUploadProps {
   onFileSelect: (file: File) => void;
@@ -28,14 +29,16 @@ export const CSVUpload = ({ onFileSelect, onLoadSample }: CSVUploadProps) => {
           animate={{ scale: 1 }}
           transition={{ delay: 0.2, type: "spring" }}
         >
-          <FileSpreadsheet className="w-20 h-20 mx-auto mb-6 text-primary" />
+          <div className="mx-auto mb-6 inline-flex items-center justify-center rounded-full p-4 bg-gradient-to-br from-accent/20 to-primary/20">
+            <BrandLogo className="w-16 h-16" />
+          </div>
         </motion.div>
 
-        <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-          OpenProject Insight Hub
+        <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-accent to-primary bg-clip-text text-transparent">
+          TeamLight
         </h1>
         <p className="text-muted-foreground mb-8 text-lg">
-          Upload your OpenProject CSV export to visualize team performance and workload analytics
+          Upload your CSV export to visualize team performance and workload analytics
         </p>
 
         <div className="space-y-4">

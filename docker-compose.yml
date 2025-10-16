@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  teamlight-app:
+    build: .
+    ports:
+      - "3001:3001"
+    environment:
+      # Server Configuration
+      - NODE_ENV=production
+      - PORT=3001
+      
+      # Authentication Credentials
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-Admin124$}
+      - USER_USERNAME=${USER_USERNAME:-user}
+      - USER_PASSWORD=${USER_PASSWORD:-user}
+      
+      # JWT Secret
+      - JWT_SECRET=${JWT_SECRET:-teamlight_secret_key_2024}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - teamlight-network
+
+networks:
+  teamlight-network:
+    driver: bridge

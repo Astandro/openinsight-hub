@@ -20,7 +20,7 @@ interface FilterSidebarProps {
 
 const FUNCTIONS: FunctionType[] = [
   "BE", "FE", "QA", "DESIGNER", "PRODUCT", "INFRA",
-  "BUSINESS SUPPORT", "RESEARCHER", "PRINCIPAL", "COORDINATOR", "UX WRITER"
+  "BUSINESS SUPPORT", "RESEARCHER", "FOUNDRY", "UX WRITER"
 ];
 
 export const FilterSidebar = ({
@@ -44,90 +44,63 @@ export const FilterSidebar = ({
     <motion.div
       initial={{ x: -300, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
-      className="w-80 border-r border-border bg-card/50 backdrop-blur h-screen sticky top-0"
+      className="w-80 border-r border-border/60 bg-gradient-to-b from-card/90 to-card/70 backdrop-blur-sm h-screen sticky top-0 shadow-lg"
     >
-      <div className="p-6 border-b border-border">
+      <div className="p-6 border-b border-border/40 bg-gradient-to-r from-primary/5 to-accent/5">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold flex items-center gap-2">
+          <h2 className="text-xl font-bold flex items-center gap-2 bg-gradient-to-r from-accent to-primary bg-clip-text text-transparent">
             <Filter className="h-5 w-5" />
             Filters
           </h2>
-          <Button variant="ghost" size="sm" onClick={handleReset}>
+          <Button variant="ghost" size="sm" onClick={handleReset} className="hover:bg-destructive/10 hover:text-destructive transition-colors">
             <X className="h-4 w-4 mr-1" />
             Reset
           </Button>
         </div>
       </div>
 
-      <ScrollArea className="h-[calc(100vh-5rem)]">
+      <ScrollArea className="h-[calc(100vh-8rem)]">
         <div className="p-6 space-y-6">
           {/* Search Assignee */}
-          <div>
-            <Label className="mb-2 block">Search Assignee</Label>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <div className="space-y-3">
+            <Label className="text-sm font-medium text-foreground/90">Search Assignee</Label>
+            <div className="relative group">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
               <Input
                 placeholder="Type name..."
                 value={filters.searchAssignee}
                 onChange={(e) =>
                   onFiltersChange({ ...filters, searchAssignee: e.target.value })
                 }
-                className="pl-9"
+                className="pl-9 border-border/60 focus:border-primary/60 focus:ring-primary/20 transition-all duration-200"
               />
             </div>
           </div>
 
-          <Separator />
+          <Separator className="bg-border/40" />
 
           {/* Status Mode */}
-          <div className="flex items-center justify-between">
-            <Label htmlFor="status-mode">Include All Statuses</Label>
+          <div className="flex items-center justify-between p-3 rounded-lg bg-secondary/20 border border-border/40 hover:bg-secondary/30 transition-colors">
+            <Label htmlFor="status-mode" className="text-sm font-medium cursor-pointer">Include All Statuses</Label>
             <Switch
               id="status-mode"
               checked={filters.includeAllStatuses}
               onCheckedChange={(checked) =>
                 onFiltersChange({ ...filters, includeAllStatuses: checked })
               }
+              className="data-[state=checked]:bg-primary"
             />
           </div>
 
-          <Separator />
+          <Separator className="bg-border/40" />
 
-          {/* Time Period */}
-          <div>
-            <Label className="mb-3 block">Time Period</Label>
-            <RadioGroup
-              value={filters.timePeriod}
-              onValueChange={(value) =>
-                onFiltersChange({ ...filters, timePeriod: value as any })
-              }
-            >
-              <div className="space-y-2">
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="1q" id="1q" />
-                  <Label htmlFor="1q" className="cursor-pointer">Last 1 Quarter</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="2q" id="2q" />
-                  <Label htmlFor="2q" className="cursor-pointer">Last 2 Quarters</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="3q" id="3q" />
-                  <Label htmlFor="3q" className="cursor-pointer">Last 3 Quarters</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="all" id="all" />
-                  <Label htmlFor="all" className="cursor-pointer">All Time</Label>
-                </div>
-              </div>
-            </RadioGroup>
-          </div>
+          {/* Time Period moved to header dropdown */}
 
           <Separator />
 
           {/* Project */}
-          <div>
-            <Label className="mb-3 block">Project</Label>
+          <div className="space-y-3">
+            <Label className="text-sm font-medium text-foreground/90">Project</Label>
             <RadioGroup
               value={filters.selectedProject || ""}
               onValueChange={(value) =>
@@ -138,14 +111,14 @@ export const FilterSidebar = ({
               }
             >
               <div className="space-y-2">
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="" id="project-all" />
-                  <Label htmlFor="project-all" className="cursor-pointer">All Projects</Label>
+                <div className="flex items-center space-x-3 p-2 rounded-lg hover:bg-secondary/20 transition-colors">
+                  <RadioGroupItem value="" id="project-all" className="text-primary" />
+                  <Label htmlFor="project-all" className="cursor-pointer text-sm font-medium">All Projects</Label>
                 </div>
                 {projects.map((project) => (
-                  <div key={project} className="flex items-center space-x-2">
-                    <RadioGroupItem value={project} id={`project-${project}`} />
-                    <Label htmlFor={`project-${project}`} className="cursor-pointer">
+                  <div key={project} className="flex items-center space-x-3 p-2 rounded-lg hover:bg-secondary/20 transition-colors">
+                    <RadioGroupItem value={project} id={`project-${project}`} className="text-primary" />
+                    <Label htmlFor={`project-${project}`} className="cursor-pointer text-sm">
                       {project}
                     </Label>
                   </div>
@@ -157,8 +130,8 @@ export const FilterSidebar = ({
           <Separator />
 
           {/* Function */}
-          <div>
-            <Label className="mb-3 block">Function</Label>
+          <div className="space-y-3">
+            <Label className="text-sm font-medium text-foreground/90">Function</Label>
             <RadioGroup
               value={filters.selectedFunction || ""}
               onValueChange={(value) =>
@@ -169,13 +142,13 @@ export const FilterSidebar = ({
               }
             >
               <div className="space-y-2">
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="" id="func-all" />
-                  <Label htmlFor="func-all" className="cursor-pointer">All Functions</Label>
+                <div className="flex items-center space-x-3 p-2 rounded-lg hover:bg-secondary/20 transition-colors">
+                  <RadioGroupItem value="" id="func-all" className="text-primary" />
+                  <Label htmlFor="func-all" className="cursor-pointer text-sm font-medium">All Functions</Label>
                 </div>
                 {FUNCTIONS.map((func) => (
-                  <div key={func} className="flex items-center space-x-2">
-                    <RadioGroupItem value={func} id={`func-${func}`} />
+                  <div key={func} className="flex items-center space-x-3 p-2 rounded-lg hover:bg-secondary/20 transition-colors">
+                    <RadioGroupItem value={func} id={`func-${func}`} className="text-primary" />
                     <Label htmlFor={`func-${func}`} className="cursor-pointer text-sm">
                       {func}
                     </Label>
@@ -185,31 +158,6 @@ export const FilterSidebar = ({
             </RadioGroup>
           </div>
 
-          <Separator />
-
-          {/* Sprints */}
-          <div>
-            <Label className="mb-3 block">Sprints</Label>
-            <div className="space-y-2">
-              {sprints.map((sprint) => (
-                <div key={sprint} className="flex items-center space-x-2">
-                  <Checkbox
-                    id={`sprint-${sprint}`}
-                    checked={filters.selectedSprints.includes(sprint)}
-                    onCheckedChange={(checked) => {
-                      const updated = checked
-                        ? [...filters.selectedSprints, sprint]
-                        : filters.selectedSprints.filter((s) => s !== sprint);
-                      onFiltersChange({ ...filters, selectedSprints: updated });
-                    }}
-                  />
-                  <Label htmlFor={`sprint-${sprint}`} className="cursor-pointer text-sm">
-                    {sprint}
-                  </Label>
-                </div>
-              ))}
-            </div>
-          </div>
         </div>
       </ScrollArea>
     </motion.div>
