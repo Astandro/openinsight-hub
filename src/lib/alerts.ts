@@ -7,27 +7,28 @@ export const generateAlerts = (
 ): Alert[] => {
   const alerts: Alert[] = [];
 
-  // Check for top and low performers
+  // Check for top and low performers using the flags from enhanced metrics
   assigneeMetrics.forEach((m) => {
-    if (m.zScore >= thresholds.topPerformerZ) {
+    if (m.flags && m.flags.includes("top_performer")) {
       alerts.push({
         type: "top-performer",
-        message: `${m.assignee} (${m.function}) is a top performer with ${m.totalClosedStoryPoints} SP (z=${m.zScore.toFixed(2)})`,
+        message: `${m.assignee} (${m.function}) is a top performer with ${m.effectiveStoryPoints} SP (z=${m.performanceScore.toFixed(2)})`,
         assignee: m.assignee,
         function: m.function,
-        value: m.zScore,
+        value: m.performanceScore,
       });
     }
-    if (m.zScore <= thresholds.lowPerformerZ) {
+    if (m.flags && m.flags.includes("low_performer")) {
       alerts.push({
         type: "low-performer",
-        message: `${m.assignee} (${m.function}) needs support: ${m.totalClosedStoryPoints} SP (z=${m.zScore.toFixed(2)})`,
+        message: `${m.assignee} (${m.function}) needs support: ${m.effectiveStoryPoints} SP (z=${m.performanceScore.toFixed(2)})`,
         assignee: m.assignee,
         function: m.function,
-        value: m.zScore,
+        value: m.performanceScore,
       });
     }
-    if ((m.function === "BE" || m.function === "FE") && m.bugRateClosed > thresholds.highBugRate) {
+    // Check for quality issues using flags from enhanced metrics
+    if (m.flags && m.flags.includes("high_bug_rate")) {
       alerts.push({
         type: "high-bug",
         message: `${m.assignee} has high bug rate: ${(m.bugRateClosed * 100).toFixed(1)}%`,
@@ -35,12 +36,28 @@ export const generateAlerts = (
         value: m.bugRateClosed,
       });
     }
-    if ((m.function === "BE" || m.function === "FE") && m.reviseRateClosed > thresholds.highReviseRate) {
+    if (m.flags && m.flags.includes("high_revise_rate")) {
       alerts.push({
         type: "high-revise",
         message: `${m.assignee} has high revise rate: ${(m.reviseRateClosed * 100).toFixed(1)}%`,
         assignee: m.assignee,
         value: m.reviseRateClosed,
+      });
+    }
+    if (m.flags && m.flags.includes("overloaded")) {
+      alerts.push({
+        type: "overloaded",
+        message: `${m.assignee} is overloaded with high performance but quality issues`,
+        assignee: m.assignee,
+        value: m.performanceScore,
+      });
+    }
+    if (m.flags && m.flags.includes("underutilized")) {
+      alerts.push({
+        type: "underutilized",
+        message: `${m.assignee} may be underutilized`,
+        assignee: m.assignee,
+        value: m.utilizationIndex,
       });
     }
   });
