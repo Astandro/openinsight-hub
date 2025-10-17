@@ -205,12 +205,12 @@ export const calculateEnhancedMetrics = (
       const funcMean = funcPerformanceScores.reduce((sum, score) => sum + score, 0) / funcPerformanceScores.length;
       const funcStd = Math.sqrt(funcPerformanceScores.reduce((sum, score) => sum + Math.pow(score - funcMean, 2), 0) / funcPerformanceScores.length);
       
-      // Function-relative thresholds
-      const funcTopThreshold = funcMean + (funcStd * 0.8); // Top 20% within function
-      const funcLowThreshold = funcMean - (funcStd * 0.8); // Bottom 20% within function
+      // Calculate function-relative Z-score for this assignee's performance score
+      const performanceZScore = funcStd > 0 ? (performanceScore - funcMean) / funcStd : 0;
       
-      if (performanceScore > funcTopThreshold) flags.push("top_performer");
-      if (performanceScore < funcLowThreshold) flags.push("low_performer");
+      // Use configured thresholds for top/low performer detection
+      if (performanceZScore >= thresholds.topPerformerZ) flags.push("top_performer");
+      if (performanceZScore <= thresholds.lowPerformerZ) flags.push("low_performer");
     }
     
     if (m.bugRateClosed > thresholds.highBugRate) flags.push("high_bug_rate");
