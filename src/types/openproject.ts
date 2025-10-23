@@ -22,9 +22,10 @@ export interface CSVRow {
   Type: TicketType;
   Project: string;
   "Sprint Closed": string;
-  "Created Date": string;
-  "Closed Date": string;
+  "Sprint Created": string;
+  "Created At": string;
   Subject: string;
+  Parent?: string;
 }
 
 export interface ParsedTicket {
@@ -45,6 +46,14 @@ export interface ParsedTicket {
   cycleDays: number | null;
   normalizedType: "Feature" | "Bug" | "Regression" | "Improvement" | "Release" | "Task" | "Other";
   severity?: string;
+  parentId?: string; // Parent feature ID for child tickets
+}
+
+export interface FeatureContribution {
+  featureId: string;
+  featureName: string;
+  storyPoints: number;
+  project: string;
 }
 
 export interface AssigneeMetrics {
@@ -67,6 +76,9 @@ export interface AssigneeMetrics {
   utilizationIndex: number;
   activeWeeks: number;
   flags: string[];
+  // Feature contributions
+  featureContributions: FeatureContribution[];
+  featureCount: number;
 }
 
 export interface FunctionMetrics {

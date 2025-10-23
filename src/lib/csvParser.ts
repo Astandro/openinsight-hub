@@ -26,7 +26,7 @@ const parseRow = (row: CSVRow): ParsedTicket | null => {
   try {
     const storyPoints = parseInt(row["Story Points"] || "0", 10) || 0;
     const createdDate = new Date(row["Created At"]);
-    const closedDate = new Date(row["Updated At"]);
+    const closedDate = row["Sprint Closed"] ? new Date(row["Created At"]) : null; // Use created date for now
     
     const cycleDays = closedDate 
       ? Math.round((closedDate.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24))
@@ -40,7 +40,13 @@ const parseRow = (row: CSVRow): ParsedTicket | null => {
                      subject.toLowerCase().includes("revise");
     const isBug = normalizedType === "Bug" || type.toLowerCase().includes("bug");
 
+    // Generate ID from Sprint Created or use a random one
+    const id = row["Sprint Created"]?.split(" ")[1] || `TICKET-${Math.random().toString(36).substr(2, 9)}`;
+    const title = row.Subject || `Ticket ${id}`;
+
     return {
+      id,
+      title,
       assignee: row.Assignee || "Unassigned",
       function: row.Function,
       status: row.Status,
@@ -55,6 +61,7 @@ const parseRow = (row: CSVRow): ParsedTicket | null => {
       isBug,
       isRevise,
       cycleDays,
+      parentId: row.Parent || undefined, // Add parent ID from CSV
     };
   } catch (error) {
     console.error("Error parsing row:", row, error);
@@ -86,7 +93,14 @@ export const generateSampleData = (): ParsedTicket[] => {
     const isRevise = isBug && Math.random() < 0.3;
 
     const type = isBug ? "Bug" : Math.random() < 0.5 ? "Feature" : "Task";
+    const id = `SAMPLE-${1000 + i}`;
+    const subject = isRevise 
+      ? `REVISE: Fix issue in ${projects[Math.floor(Math.random() * projects.length)]}`
+      : `Implement feature ${i + 1}`;
+    
     tickets.push({
+      id,
+      title: subject,
       assignee: assignee.name,
       function: assignee.function,
       status: "Closed",
@@ -97,12 +111,12 @@ export const generateSampleData = (): ParsedTicket[] => {
       sprintClosed: sprints[Math.floor(Math.random() * sprints.length)],
       createdDate,
       closedDate,
-      subject: isRevise 
-        ? `REVISE: Fix issue in ${projects[Math.floor(Math.random() * projects.length)]}`
-        : `Implement feature ${i + 1}`,
+      subject,
       isBug,
       isRevise,
       cycleDays: Math.round((closedDate.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24)),
+      severity: isBug ? (Math.random() < 0.5 ? "High" : "Medium") : undefined,
+      parentId: undefined,
     });
   }
 

@@ -129,14 +129,7 @@ const Dashboard = () => {
     }
   }, []);
 
-  // Periodic refresh to check for threshold updates (every 30 seconds)
-  useEffect(() => {
-    const interval = setInterval(() => {
-      refreshData();
-    }, 30000); // 30 seconds
-
-    return () => clearInterval(interval);
-  }, []);
+  // Removed automatic refresh - now manual only via button click
 
   // Save data when it changes
   useEffect(() => {
@@ -535,20 +528,20 @@ const Dashboard = () => {
             <AlertsBar alerts={alerts} />
 
             {/* Function Performance */}
-            <FunctionPerformance functionMetrics={functionMetrics} />
-
-            <div className="mt-6">
-              {/* Top Contributors */}
-              <TopContributors metrics={assigneeMetrics} tickets={filteredTickets} />
-            </div>
+            <FunctionPerformance tickets={filteredTickets} selectedFunction={filters.selectedFunction} />
 
             <div className="mt-6">
               <Heatmap data={heatmapData} title="Project × Sprint Heatmap" />
             </div>
-
+ 
             {/* Feature Timeline */}
             <div className="mt-6">
               <FeatureTimeline tickets={filteredTickets} timePeriod={filters.timePeriod} />
+            </div>
+
+            {/* Top Contributors - Moved to bottom */}
+            <div className="mt-6">
+              <TopContributors metrics={assigneeMetrics} tickets={filteredTickets} />
             </div>
           </div>
         </div>

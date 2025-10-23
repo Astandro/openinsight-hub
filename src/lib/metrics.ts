@@ -1,4 +1,4 @@
-import { ParsedTicket, AssigneeMetrics, FunctionMetrics, FunctionType, Thresholds } from "@/types/openproject";
+import { ParsedTicket, AssigneeMetrics, FunctionMetrics, FunctionType, Thresholds, FeatureContribution } from "@/types/openproject";
 
 // Helper function to calculate Z-score for any metric
 const calculateZScore = (values: number[], value: number): number => {
@@ -41,6 +41,55 @@ const getWeekNumber = (date: Date): number => {
   return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
 };
 
+// Helper function to get feature contributions for an assignee
+const getFeatureContributions = (tickets: ParsedTicket[], assignee: string): FeatureContribution[] => {
+  // Find all tickets assigned to this user
+  const assigneeTickets = tickets.filter((t) => t.assignee === assignee);
+  
+  // Track contributions: Map<featureId, contribution>
+  const contributionMap = new Map<string, FeatureContribution>();
+  
+  assigneeTickets.forEach(ticket => {
+    // Determine the feature ID - either this ticket is a feature, or it has a parent
+    let featureId: string;
+    let featureName: string;
+    let project: string;
+    
+    if (ticket.parentId) {
+      // This is a child ticket - find its parent feature
+      const parentFeature = tickets.find(t => t.id === ticket.parentId);
+      if (!parentFeature) return; // Skip if parent not found
+      
+      featureId = ticket.parentId;
+      featureName = parentFeature.title;
+      project = parentFeature.project;
+    } else if (ticket.type === "Feature" || ticket.normalizedType === "Feature") {
+      // This is a parent feature itself
+      featureId = ticket.id;
+      featureName = ticket.title;
+      project = ticket.project;
+    } else {
+      // Not a feature and has no parent - skip
+      return;
+    }
+    
+    // Add or update the contribution
+    if (contributionMap.has(featureId)) {
+      const existing = contributionMap.get(featureId)!;
+      existing.storyPoints += ticket.storyPoints;
+    } else {
+      contributionMap.set(featureId, {
+        featureId,
+        featureName,
+        storyPoints: ticket.storyPoints,
+        project,
+      });
+    }
+  });
+  
+  return Array.from(contributionMap.values());
+};
+
 export const calculateAssigneeMetrics = (
   tickets: ParsedTicket[],
   assignee: string
@@ -73,6 +122,10 @@ export const calculateAssigneeMetrics = (
   
   // Calculate active weeks
   const activeWeeks = calculateActiveWeeks(closedTickets);
+  
+  // Calculate feature contributions
+  const featureContributions = getFeatureContributions(tickets, assignee);
+  const featureCount = featureContributions.length;
 
   return {
     assignee,
@@ -89,6 +142,8 @@ export const calculateAssigneeMetrics = (
     projectVariety,
     effectiveStoryPoints,
     activeWeeks,
+    featureContributions,
+    featureCount,
   };
 };
 
