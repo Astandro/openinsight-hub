@@ -12,6 +12,7 @@ import { FunctionPerformance } from "@/components/Dashboard/FunctionPerformance"
 import { TopContributors } from "@/components/Dashboard/TopContributors";
 import { AlertsBar } from "@/components/Dashboard/AlertsBar";
 import { Heatmap, type HeatmapDatum } from "@/components/Dashboard/Heatmap";
+import { FeatureTimeline } from "@/components/Dashboard/FeatureTimeline";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FileDown, RefreshCw, Settings, LogIn, Download, X, RotateCcw } from "lucide-react";
@@ -30,8 +31,9 @@ const Dashboard = () => {
   const [username, setUsername] = useState<string>("");
   const [tickets, setTickets] = useState<ParsedTicket[]>([]);
   const [filters, setFilters] = useState<Filters>({
-    selectedFunctions: [],
-    selectedProjects: [],
+    searchAssignee: "",
+    selectedProject: null,
+    selectedFunction: null,
     selectedSprints: [],
     timePeriod: "all",
     includeAllStatuses: false,
@@ -66,7 +68,29 @@ const Dashboard = () => {
       const serverData = await fetchData();
       
       if (serverData.tickets && serverData.tickets.length > 0) {
-        setTickets(serverData.tickets);
+        // Transform API data to match ParsedTicket interface
+        const transformedTickets = serverData.tickets.map((ticket: any, index: number) => ({
+          id: ticket.id || `TICKET-${index + 1}`,
+          title: ticket.title || ticket.subject || `Ticket ${index + 1}`,
+          assignee: ticket.assignee,
+          function: ticket.function as FunctionType,
+          status: ticket.status,
+          storyPoints: ticket.storyPoints,
+          type: ticket.type,
+          project: ticket.project,
+          sprintClosed: ticket.sprintClosed,
+          createdDate: new Date(ticket.createdDate),
+          closedDate: ticket.closedDate ? new Date(ticket.closedDate) : null,
+          subject: ticket.subject,
+          isBug: ticket.isBug || false,
+          isRevise: ticket.isRevise || false,
+          cycleDays: ticket.cycleDays || null,
+          normalizedType: ticket.normalizedType === "Other" && ticket.type?.toLowerCase().includes("story") 
+            ? "Feature" 
+            : ticket.normalizedType || "Other",
+          severity: ticket.severity || "Medium"
+        }));
+        setTickets(transformedTickets);
       } else {
         // Load sample data if no data exists on server
         const sampleData = loadSampleData();
@@ -305,8 +329,9 @@ const Dashboard = () => {
   const handleReset = () => {
     setTickets([]);
     setFilters({
-      selectedFunctions: [],
-      selectedProjects: [],
+      searchAssignee: "",
+      selectedProject: null,
+      selectedFunction: null,
       selectedSprints: [],
       timePeriod: "all",
       includeAllStatuses: false,
@@ -347,10 +372,11 @@ const Dashboard = () => {
         functionMetrics,
         kpiData,
         dateRange: filters.timePeriod === "all" ? "All Time" : 
-                  filters.timePeriod === "1q" ? "Last 1Q" :
-                  filters.timePeriod === "2q" ? "Last 2Q" :
-                  filters.timePeriod === "3q" ? "Last 3Q" :
-                  filters.timePeriod === "4q" ? "Last 4Q" : "All Time"
+                  filters.timePeriod === "Q1" ? "Q1 (Jan - Mar)" :
+                  filters.timePeriod === "Q2" ? "Q2 (Apr - Jun)" :
+                  filters.timePeriod === "Q3" ? "Q3 (Jul - Sep)" :
+                  filters.timePeriod === "Q4" ? "Q4 (Oct - Dec)" :
+                  filters.timePeriod === "current_year" ? "Current Year" : "All Time"
       };
       
       console.log("PDF Data:", pdfData); // Debug log
@@ -461,15 +487,10 @@ const Dashboard = () => {
           {/* Sidebar */}
           <div className="lg:col-span-1">
             <FilterSidebar
-              functions={FUNCTIONS}
               projects={projects}
               sprints={sprints}
               filters={filters}
               onFiltersChange={setFilters}
-              onFileUpload={handleFileUpload}
-              onLoadSample={handleLoadSample}
-              onReset={handleReset}
-              isAdmin={isAdmin}
             />
           </div>
 
@@ -482,10 +503,11 @@ const Dashboard = () => {
                   <Button variant="outline" className="gap-2">
                     <FileDown className="h-4 w-4" />
                     {filters.timePeriod === "all" ? "All Time" : 
-                     filters.timePeriod === "1q" ? "Last 1Q" :
-                     filters.timePeriod === "2q" ? "Last 2Q" :
-                     filters.timePeriod === "3q" ? "Last 3Q" :
-                     filters.timePeriod === "4q" ? "Last 4Q" : "All Time"}
+                     filters.timePeriod === "Q1" ? "Q1 (Jan - Mar)" :
+                     filters.timePeriod === "Q2" ? "Q2 (Apr - Jun)" :
+                     filters.timePeriod === "Q3" ? "Q3 (Jul - Sep)" :
+                     filters.timePeriod === "Q4" ? "Q4 (Oct - Dec)" :
+                     filters.timePeriod === "current_year" ? "Current Year" : "All Time"}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
@@ -496,10 +518,11 @@ const Dashboard = () => {
                     onValueChange={handleTimePeriodChange}
                   >
                     <DropdownMenuRadioItem value="all">All Time</DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="1q">Last 1Q</DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="2q">Last 2Q</DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="3q">Last 3Q</DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="4q">Last 4Q</DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="Q1">Q1 (Jan - Mar)</DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="Q2">Q2 (Apr - Jun)</DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="Q3">Q3 (Jul - Sep)</DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="Q4">Q4 (Oct - Dec)</DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="current_year">Current Year</DropdownMenuRadioItem>
                   </DropdownMenuRadioGroup>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -521,6 +544,11 @@ const Dashboard = () => {
 
             <div className="mt-6">
               <Heatmap data={heatmapData} title="Project × Sprint Heatmap" />
+            </div>
+
+            {/* Feature Timeline */}
+            <div className="mt-6">
+              <FeatureTimeline tickets={filteredTickets} timePeriod={filters.timePeriod} />
             </div>
           </div>
         </div>

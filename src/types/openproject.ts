@@ -28,6 +28,8 @@ export interface CSVRow {
 }
 
 export interface ParsedTicket {
+  id: string;
+  title: string;
   assignee: string;
   function: FunctionType;
   status: string;
@@ -42,6 +44,7 @@ export interface ParsedTicket {
   isRevise: boolean;
   cycleDays: number | null;
   normalizedType: "Feature" | "Bug" | "Regression" | "Improvement" | "Release" | "Task" | "Other";
+  severity?: string;
 }
 
 export interface AssigneeMetrics {
@@ -81,7 +84,7 @@ export interface Filters {
   searchAssignee: string;
   selectedProject: string | null;
   selectedFunction: FunctionType | null;
-  timePeriod: "1q" | "2q" | "3q" | "4q" | "all";
+  timePeriod: "Q1" | "Q2" | "Q3" | "Q4" | "current_year" | "all";
   selectedSprints: string[];
   includeAllStatuses: boolean;
 }

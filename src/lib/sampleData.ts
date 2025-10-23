@@ -1,6 +1,7 @@
 // Sample data for testing
 export const loadSampleData = () => {
   return [
+    // Q1 2024 (Jan-Mar)
     {
       id: "TICKET-001",
       title: "Implement user authentication",
@@ -14,7 +15,11 @@ export const loadSampleData = () => {
       isBug: false,
       isRevise: false,
       createdDate: new Date("2024-01-01"),
-      closedDate: new Date("2024-01-06")
+      closedDate: new Date("2024-01-06"),
+      type: "Feature",
+      subject: "Implement user authentication",
+      normalizedType: "Feature",
+      severity: "Medium"
     },
     {
       id: "TICKET-002", 
@@ -29,7 +34,11 @@ export const loadSampleData = () => {
       isBug: true,
       isRevise: false,
       createdDate: new Date("2024-01-07"),
-      closedDate: new Date("2024-01-09")
+      closedDate: new Date("2024-01-09"),
+      type: "Bug",
+      subject: "Fix login bug",
+      normalizedType: "Bug",
+      severity: "High"
     },
     {
       id: "TICKET-003",
@@ -44,7 +53,11 @@ export const loadSampleData = () => {
       isBug: false,
       isRevise: false,
       createdDate: new Date("2024-01-02"),
-      closedDate: new Date("2024-01-06")
+      closedDate: new Date("2024-01-06"),
+      type: "Feature",
+      subject: "Design user interface",
+      normalizedType: "Feature",
+      severity: "Medium"
     },
     {
       id: "TICKET-004",
@@ -59,7 +72,11 @@ export const loadSampleData = () => {
       isBug: false,
       isRevise: true,
       createdDate: new Date("2024-01-10"),
-      closedDate: new Date("2024-01-13")
+      closedDate: new Date("2024-01-13"),
+      type: "Task",
+      subject: "Update dashboard layout",
+      normalizedType: "Task",
+      severity: "Low"
     },
     {
       id: "TICKET-005",
@@ -74,7 +91,11 @@ export const loadSampleData = () => {
       isBug: false,
       isRevise: false,
       createdDate: new Date("2024-01-03"),
-      closedDate: new Date("2024-01-07")
+      closedDate: new Date("2024-01-07"),
+      type: "Task",
+      subject: "Write unit tests",
+      normalizedType: "Task",
+      severity: "Medium"
     },
     {
       id: "TICKET-006",
@@ -89,7 +110,11 @@ export const loadSampleData = () => {
       isBug: false,
       isRevise: false,
       createdDate: new Date("2024-01-14"),
-      closedDate: new Date("2024-01-21")
+      closedDate: new Date("2024-01-21"),
+      type: "Feature",
+      subject: "Performance optimization",
+      normalizedType: "Feature",
+      severity: "High"
     },
     {
       id: "TICKET-007",
@@ -104,7 +129,11 @@ export const loadSampleData = () => {
       isBug: false,
       isRevise: false,
       createdDate: new Date("2024-01-15"),
-      closedDate: new Date("2024-01-20")
+      closedDate: new Date("2024-01-20"),
+      type: "Feature",
+      subject: "Mobile responsive design",
+      normalizedType: "Feature",
+      severity: "Medium"
     },
     {
       id: "TICKET-008",
@@ -119,7 +148,11 @@ export const loadSampleData = () => {
       isBug: false,
       isRevise: false,
       createdDate: new Date("2024-01-22"),
-      closedDate: new Date("2024-02-01")
+      closedDate: new Date("2024-02-01"),
+      type: "Feature",
+      subject: "Database migration",
+      normalizedType: "Feature",
+      severity: "High"
     },
     {
       id: "TICKET-009",
@@ -134,7 +167,11 @@ export const loadSampleData = () => {
       isBug: false,
       isRevise: false,
       createdDate: new Date("2024-01-25"),
-      closedDate: new Date("2024-01-28")
+      closedDate: new Date("2024-01-28"),
+      type: "Task",
+      subject: "API documentation",
+      normalizedType: "Task",
+      severity: "Low"
     },
     {
       id: "TICKET-010",
@@ -149,7 +186,204 @@ export const loadSampleData = () => {
       isBug: true,
       isRevise: false,
       createdDate: new Date("2024-01-29"),
-      closedDate: new Date("2024-01-30")
+      closedDate: new Date("2024-01-30"),
+      type: "Bug",
+      subject: "Fix responsive issues",
+      normalizedType: "Bug",
+      severity: "Medium"
+    },
+    // Q2 2024 (Apr-Jun)
+    {
+      id: "TICKET-011",
+      title: "Advanced analytics dashboard",
+      assignee: "Astandro",
+      function: "BE",
+      project: "Chatbot",
+      status: "Closed",
+      storyPoints: 15,
+      sprintClosed: "Sprint 4",
+      cycleDays: 8,
+      isBug: false,
+      isRevise: false,
+      createdDate: new Date("2024-04-01"),
+      closedDate: new Date("2024-04-09"),
+      type: "Feature",
+      subject: "Advanced analytics dashboard",
+      normalizedType: "Feature",
+      severity: "High"
+    },
+    {
+      id: "TICKET-012",
+      title: "User onboarding flow",
+      assignee: "Sarah",
+      function: "FE",
+      project: "Orion",
+      status: "Closed",
+      storyPoints: 12,
+      sprintClosed: "Sprint 4",
+      cycleDays: 6,
+      isBug: false,
+      isRevise: false,
+      createdDate: new Date("2024-04-05"),
+      closedDate: new Date("2024-04-11"),
+      type: "Feature",
+      subject: "User onboarding flow",
+      normalizedType: "Feature",
+      severity: "Medium"
+    },
+    {
+      id: "TICKET-013",
+      title: "Integration testing suite",
+      assignee: "Mike",
+      function: "QA",
+      project: "Xelvate",
+      status: "Closed",
+      storyPoints: 8,
+      sprintClosed: "Sprint 4",
+      cycleDays: 5,
+      isBug: false,
+      isRevise: false,
+      createdDate: new Date("2024-04-10"),
+      closedDate: new Date("2024-04-15"),
+      type: "Task",
+      subject: "Integration testing suite",
+      normalizedType: "Task",
+      severity: "Medium"
+    },
+    {
+      id: "TICKET-014",
+      title: "Performance monitoring",
+      assignee: "Astandro",
+      function: "BE",
+      project: "Chatbot",
+      status: "Closed",
+      storyPoints: 10,
+      sprintClosed: "Sprint 5",
+      cycleDays: 7,
+      isBug: false,
+      isRevise: false,
+      createdDate: new Date("2024-05-01"),
+      closedDate: new Date("2024-05-08"),
+      type: "Feature",
+      subject: "Performance monitoring",
+      normalizedType: "Feature",
+      severity: "High"
+    },
+    {
+      id: "TICKET-015",
+      title: "UI component library",
+      assignee: "Sarah",
+      function: "FE",
+      project: "Orion",
+      status: "Closed",
+      storyPoints: 20,
+      sprintClosed: "Sprint 5",
+      cycleDays: 12,
+      isBug: false,
+      isRevise: false,
+      createdDate: new Date("2024-05-10"),
+      closedDate: new Date("2024-05-22"),
+      type: "Feature",
+      subject: "UI component library",
+      normalizedType: "Feature",
+      severity: "High"
+    },
+    // Q3 2024 (Jul-Sep)
+    {
+      id: "TICKET-016",
+      title: "Real-time notifications",
+      assignee: "Astandro",
+      function: "BE",
+      project: "Chatbot",
+      status: "Closed",
+      storyPoints: 18,
+      sprintClosed: "Sprint 6",
+      cycleDays: 10,
+      isBug: false,
+      isRevise: false,
+      createdDate: new Date("2024-07-01"),
+      closedDate: new Date("2024-07-11"),
+      type: "Feature",
+      subject: "Real-time notifications",
+      normalizedType: "Feature",
+      severity: "High"
+    },
+    {
+      id: "TICKET-017",
+      title: "Advanced search functionality",
+      assignee: "Sarah",
+      function: "FE",
+      project: "Orion",
+      status: "Closed",
+      storyPoints: 14,
+      sprintClosed: "Sprint 6",
+      cycleDays: 8,
+      isBug: false,
+      isRevise: false,
+      createdDate: new Date("2024-07-15"),
+      closedDate: new Date("2024-07-23"),
+      type: "Feature",
+      subject: "Advanced search functionality",
+      normalizedType: "Feature",
+      severity: "Medium"
+    },
+    {
+      id: "TICKET-018",
+      title: "Automated testing pipeline",
+      assignee: "Mike",
+      function: "QA",
+      project: "Xelvate",
+      status: "Closed",
+      storyPoints: 16,
+      sprintClosed: "Sprint 7",
+      cycleDays: 9,
+      isBug: false,
+      isRevise: false,
+      createdDate: new Date("2024-08-01"),
+      closedDate: new Date("2024-08-10"),
+      type: "Feature",
+      subject: "Automated testing pipeline",
+      normalizedType: "Feature",
+      severity: "High"
+    },
+    // Q4 2024 (Oct-Dec)
+    {
+      id: "TICKET-019",
+      title: "AI-powered recommendations",
+      assignee: "Astandro",
+      function: "BE",
+      project: "Chatbot",
+      status: "Closed",
+      storyPoints: 25,
+      sprintClosed: "Sprint 8",
+      cycleDays: 15,
+      isBug: false,
+      isRevise: false,
+      createdDate: new Date("2024-10-01"),
+      closedDate: new Date("2024-10-16"),
+      type: "Feature",
+      subject: "AI-powered recommendations",
+      normalizedType: "Feature",
+      severity: "High"
+    },
+    {
+      id: "TICKET-020",
+      title: "Dark mode implementation",
+      assignee: "Sarah",
+      function: "FE",
+      project: "Orion",
+      status: "Closed",
+      storyPoints: 9,
+      sprintClosed: "Sprint 8",
+      cycleDays: 5,
+      isBug: false,
+      isRevise: false,
+      createdDate: new Date("2024-10-10"),
+      closedDate: new Date("2024-10-15"),
+      type: "Feature",
+      subject: "Dark mode implementation",
+      normalizedType: "Feature",
+      severity: "Medium"
     }
   ];
 };

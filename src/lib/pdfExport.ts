@@ -194,16 +194,16 @@ export const generatePDFReport = (data: PDFExportData) => {
   doc.text('Top 10 Contributors:', 20, 60);
   
   const topContributors = data.assigneeMetrics
-    .filter(m => m.performanceScore !== undefined && !isNaN(m.performanceScore))
-    .sort((a, b) => (b.performanceScore || 0) - (a.performanceScore || 0))
+    .filter(m => m.zScore !== undefined && !isNaN(m.zScore))
+    .sort((a, b) => (b.zScore || 0) - (a.zScore || 0))
     .slice(0, 10);
   
   doc.setFontSize(10);
   doc.text('Rank', 20, 80);
   doc.text('Name', 40, 80);
   doc.text('Function', 100, 80);
-  doc.text('Performance Score', 140, 80);
-  doc.text('Effective SP', 180, 80);
+  doc.text('Z-Score', 140, 80);
+  doc.text('Story Points', 180, 80);
   doc.line(20, 85, 200, 85);
   
   topContributors.forEach((contributor, index) => {
@@ -211,8 +211,8 @@ export const generatePDFReport = (data: PDFExportData) => {
     doc.text((index + 1).toString(), 20, y);
     doc.text(contributor.assignee || 'Unknown', 40, y);
     doc.text(contributor.function || 'Unknown', 100, y);
-    doc.text((contributor.performanceScore || 0).toFixed(2), 140, y);
-    doc.text((contributor.effectiveStoryPoints || 0).toFixed(0), 180, y);
+    doc.text((contributor.zScore || 0).toFixed(2), 140, y);
+    doc.text((contributor.totalClosedStoryPoints || 0).toFixed(0), 180, y);
   });
   
   addPageNumber(7);
