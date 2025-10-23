@@ -26,7 +26,7 @@ const parseRow = (row: CSVRow): ParsedTicket | null => {
   try {
     const storyPoints = parseInt(row["Story Points"] || "0", 10) || 0;
     const createdDate = new Date(row["Created At"]);
-    const closedDate = row["Sprint Closed"] ? new Date(row["Created At"]) : null; // Use created date for now
+    const closedDate = row["Updated At"] ? new Date(row["Updated At"]) : null;
     
     const cycleDays = closedDate 
       ? Math.round((closedDate.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24))
@@ -40,11 +40,31 @@ const parseRow = (row: CSVRow): ParsedTicket | null => {
                      subject.toLowerCase().includes("revise");
     const isBug = normalizedType === "Bug" || type.toLowerCase().includes("bug");
 
-    // Generate ID from Sprint Created or use a random one
-    const id = row["Sprint Created"]?.split(" ")[1] || `TICKET-${Math.random().toString(36).substr(2, 9)}`;
-    const title = row.Subject || `Ticket ${id}`;
+    // Generate a unique ID based on the hierarchy:
+    // - Row with Type="Feature" AND has Parent value → This is the PARENT feature, use Parent as its ID
+    // - Row with Type="User story"/"Bug"/etc AND has Parent value → These are CHILDREN, Parent is their parentId
+    const title = row.Subject || "";
+    let id: string;
+    let parentId: string | undefined = undefined;
+    
+    if (!row.Parent) {
+      // No parent - this is an independent ticket
+      id = `TICKET-${Math.random().toString(36).substr(2, 9)}`;
+      parentId = undefined;
+    } else {
+      // Has a parent value in CSV
+      if (normalizedType === "Feature") {
+        // This row IS the top-level FEATURE - use Parent column value as its ID
+        id = row.Parent;
+        parentId = undefined; // It IS the parent, so no parentId
+      } else {
+        // This is a child ticket (User Story, Bug, etc.) - generate unique ID
+        id = `${row.Parent}-${type.toUpperCase()}-${Math.random().toString(36).substr(2, 6)}`;
+        parentId = row.Parent; // Parent column value is its parentId
+      }
+    }
 
-    return {
+    const ticket = {
       id,
       title,
       assignee: row.Assignee || "Unassigned",
@@ -61,8 +81,22 @@ const parseRow = (row: CSVRow): ParsedTicket | null => {
       isBug,
       isRevise,
       cycleDays,
-      parentId: row.Parent || undefined, // Add parent ID from CSV
+      parentId, // Use the parentId we calculated above
     };
+    
+    // Debug logging for first few tickets
+    if (Math.random() < 0.05) { // Log ~5% of tickets
+      console.log('Parsed ticket:', {
+        id: ticket.id,
+        type: ticket.type,
+        normalizedType: ticket.normalizedType,
+        parentId: ticket.parentId,
+        assignee: ticket.assignee,
+        function: ticket.function
+      });
+    }
+    
+    return ticket;
   } catch (error) {
     console.error("Error parsing row:", row, error);
     return null;

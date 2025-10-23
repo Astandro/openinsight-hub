@@ -1,4 +1,4 @@
-import { TrendingUp, Target, Clock, Bug, Users } from "lucide-react";
+import { TrendingUp, Target, Clock, RefreshCw, Users } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { motion } from "framer-motion";
 
@@ -7,7 +7,7 @@ interface KPICardsProps {
     totalClosedTickets: number;
     totalStoryPoints: number;
     avgCycleTime: number;
-    bugRate: number;
+    reviseRate: number;
     avgUtilization: number;
   };
   excludedCount?: number;
@@ -18,7 +18,7 @@ export const KPICards = ({ data, excludedCount = 0 }: KPICardsProps) => {
     totalClosedTickets,
     totalStoryPoints,
     avgCycleTime,
-    bugRate,
+    reviseRate,
     avgUtilization,
   } = data;
   const kpis = [
@@ -44,9 +44,9 @@ export const KPICards = ({ data, excludedCount = 0 }: KPICardsProps) => {
       gradient: "from-warning/20 to-warning/5",
     },
     {
-      label: "Bug Rate",
-      value: `${((bugRate || 0) * 100).toFixed(1)}%`,
-      icon: Bug,
+      label: "Revise Rate",
+      value: `${((reviseRate || 0) * 100).toFixed(1)}%`,
+      icon: RefreshCw,
       color: "text-danger",
       gradient: "from-danger/20 to-danger/5",
     },

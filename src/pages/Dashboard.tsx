@@ -88,7 +88,8 @@ const Dashboard = () => {
           normalizedType: ticket.normalizedType === "Other" && ticket.type?.toLowerCase().includes("story") 
             ? "Feature" 
             : ticket.normalizedType || "Other",
-          severity: ticket.severity || "Medium"
+          severity: ticket.severity || "Medium",
+          parentId: ticket.parentId || undefined
         }));
         setTickets(transformedTickets);
       } else {
@@ -197,9 +198,11 @@ const Dashboard = () => {
       return [];
     }
     const assignees = Array.from(new Set(filteredTickets.map((t) => t.assignee)));
-    const metrics = assignees.map((assignee) => calculateAssigneeMetrics(filteredTickets, assignee));
+    // Calculate metrics from filteredTickets for performance metrics
+    // But feature contributions will be calculated from ALL tickets inside calculateAssigneeMetrics
+    const metrics = assignees.map((assignee) => calculateAssigneeMetrics(filteredTickets, assignee, tickets));
     return calculateEnhancedMetrics(metrics, thresholds, filteredTickets);
-  }, [filteredTickets, thresholds]);
+  }, [tickets, filteredTickets, thresholds]);
 
   const functionMetrics = useMemo(() => {
     if (!filteredTickets || filteredTickets.length === 0) {
@@ -213,20 +216,20 @@ const Dashboard = () => {
   const kpiData = useMemo(() => {
     if (!filteredTickets || filteredTickets.length === 0) {
       return {
-        totalClosedTickets: 0,
-        totalStoryPoints: 0,
-        avgCycleTime: 0,
-        bugRate: 0,
-        avgUtilization: 0,
-      };
+      totalClosedTickets: 0,
+      totalStoryPoints: 0,
+      avgCycleTime: 0,
+      reviseRate: 0,
+      avgUtilization: 0,
+    };
     }
     
     const closedTickets = filteredTickets.filter((t) => t.status === "Closed");
     const totalStoryPoints = closedTickets.reduce((sum, t) => sum + t.storyPoints, 0);
     const cycleTimes = closedTickets.filter((t) => t.cycleDays !== null).map((t) => t.cycleDays!);
     const avgCycleTime = cycleTimes.length > 0 ? cycleTimes.reduce((a, b) => a + b, 0) / cycleTimes.length : 0;
-    const bugs = closedTickets.filter((t) => t.isBug);
-    const bugRate = closedTickets.length > 0 ? bugs.length / closedTickets.length : 0;
+    const revises = closedTickets.filter((t) => t.isRevise);
+    const reviseRate = closedTickets.length > 0 ? revises.length / closedTickets.length : 0;
     const avgUtilization =
       assigneeMetrics.length > 0
         ? assigneeMetrics.reduce((sum, m) => sum + m.totalClosedStoryPoints, 0) / assigneeMetrics.length
@@ -236,7 +239,7 @@ const Dashboard = () => {
       totalClosedTickets: closedTickets.length,
       totalStoryPoints,
       avgCycleTime,
-      bugRate,
+      reviseRate,
       avgUtilization,
     };
   }, [filteredTickets, assigneeMetrics]);
@@ -528,7 +531,7 @@ const Dashboard = () => {
             <AlertsBar alerts={alerts} />
 
             {/* Function Performance */}
-            <FunctionPerformance tickets={filteredTickets} selectedFunction={filters.selectedFunction} />
+            <FunctionPerformance tickets={filteredTickets} selectedFunction={filters.selectedFunction} selectedProject={filters.selectedProject} />
 
             <div className="mt-6">
               <Heatmap data={heatmapData} title="Project × Sprint Heatmap" />
@@ -536,7 +539,7 @@ const Dashboard = () => {
  
             {/* Feature Timeline */}
             <div className="mt-6">
-              <FeatureTimeline tickets={filteredTickets} timePeriod={filters.timePeriod} />
+              <FeatureTimeline tickets={tickets} filters={filters} />
             </div>
 
             {/* Top Contributors - Moved to bottom */}

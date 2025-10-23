@@ -7,9 +7,10 @@ import { useMemo } from "react";
 interface FunctionPerformanceProps {
   tickets: ParsedTicket[];
   selectedFunction: FunctionType | null;
+  selectedProject: string | null;
 }
 
-export const FunctionPerformance = ({ tickets, selectedFunction }: FunctionPerformanceProps) => {
+export const FunctionPerformance = ({ tickets, selectedFunction, selectedProject }: FunctionPerformanceProps) => {
   const chartData = useMemo(() => {
     if (selectedFunction) {
       // Show assignees when a specific function is selected
@@ -46,8 +47,41 @@ export const FunctionPerformance = ({ tickets, selectedFunction }: FunctionPerfo
         const totalB = b["User Story"] + b["Bug"] + b["Revise"];
         return totalB - totalA;
       });
+    } else if (!selectedProject) {
+      // Show PROJECTS when both function and project are "all"
+      const closedTickets = tickets.filter(t => t.status === "Closed");
+      const projectData = new Map<string, { userStory: number; bug: number; revise: number }>();
+      
+      closedTickets.forEach(ticket => {
+        const project = ticket.project;
+        if (!projectData.has(project)) {
+          projectData.set(project, { userStory: 0, bug: 0, revise: 0 });
+        }
+        
+        const data = projectData.get(project)!;
+        const sp = ticket.storyPoints;
+        
+        if (ticket.isRevise) {
+          data.revise += sp;
+        } else if (ticket.isBug) {
+          data.bug += sp;
+        } else {
+          data.userStory += sp;
+        }
+      });
+      
+      return Array.from(projectData.entries()).map(([name, data]) => ({
+        name,
+        "User Story": data.userStory,
+        "Bug": data.bug,
+        "Revise": data.revise,
+      })).sort((a, b) => {
+        const totalA = a["User Story"] + a["Bug"] + a["Revise"];
+        const totalB = b["User Story"] + b["Bug"] + b["Revise"];
+        return totalB - totalA;
+      });
     } else {
-      // Show functions when no specific function is selected
+      // Show functions when project is selected but function is "all"
       const closedTickets = tickets.filter(t => t.status === "Closed");
       const functionData = new Map<string, { userStory: number; bug: number; revise: number }>();
       
@@ -80,11 +114,11 @@ export const FunctionPerformance = ({ tickets, selectedFunction }: FunctionPerfo
         return totalB - totalA;
       });
     }
-  }, [tickets, selectedFunction]);
+  }, [tickets, selectedFunction, selectedProject]);
 
   const title = selectedFunction 
     ? `${selectedFunction} Team Performance`
-    : "Function Performance Overview";
+    : (!selectedProject ? "Project Performance Overview" : "Function Performance Overview");
 
   return (
     <motion.div

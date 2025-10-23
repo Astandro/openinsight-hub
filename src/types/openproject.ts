@@ -24,6 +24,7 @@ export interface CSVRow {
   "Sprint Closed": string;
   "Sprint Created": string;
   "Created At": string;
+  "Updated At": string;
   Subject: string;
   Parent?: string;
 }
