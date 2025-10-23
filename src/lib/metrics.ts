@@ -323,15 +323,40 @@ export const applyFilters = (tickets: ParsedTicket[], filters: any): ParsedTicke
   }
 
   if (filters.timePeriod !== "all") {
-    const quarters: { [key: string]: number } = { "1q": 3, "2q": 6, "3q": 9, "4q": 12 };
-    const monthsAgo = quarters[filters.timePeriod];
-    const cutoffDate = new Date();
-    cutoffDate.setMonth(cutoffDate.getMonth() - monthsAgo);
+    // Get the year from the actual data instead of current year
+    const dataYear = filtered.length > 0 && filtered[0].closedDate 
+      ? filtered[0].closedDate.getFullYear() 
+      : new Date().getFullYear();
+    
+    let startDate: Date;
+    let endDate: Date;
+    
+    if (filters.timePeriod === "current_year") {
+      startDate = new Date(dataYear, 0, 1); // January 1st
+      endDate = new Date(dataYear, 11, 31); // December 31st
+    } else {
+      // Quarterly filtering
+      const quarterMap = {
+        "Q1": { start: 0, end: 2 },   // Jan-Mar
+        "Q2": { start: 3, end: 5 },   // Apr-Jun
+        "Q3": { start: 6, end: 8 },   // Jul-Sep
+        "Q4": { start: 9, end: 11 }   // Oct-Dec
+      };
+      
+      const quarter = quarterMap[filters.timePeriod as keyof typeof quarterMap];
+      
+      // Check if quarter exists, if not, skip filtering
+      if (!quarter) {
+        return filtered;
+      }
+      
+      startDate = new Date(dataYear, quarter.start, 1);
+      endDate = new Date(dataYear, quarter.end + 1, 0); // Last day of the quarter
+    }
 
     filtered = filtered.filter((t) => {
-      if (!t.createdDate) return false;
-      const ticketDate = t.createdDate instanceof Date ? t.createdDate : new Date(t.createdDate);
-      return !isNaN(ticketDate.getTime()) && ticketDate >= cutoffDate;
+      if (!t.closedDate) return false;
+      return t.closedDate >= startDate && t.closedDate <= endDate;
     });
   }
 

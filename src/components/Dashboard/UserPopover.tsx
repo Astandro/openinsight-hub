@@ -40,9 +40,9 @@ export const UserPopover = ({ children, metrics, allMetrics, tickets }: UserPopo
                 </Badge>
               </div>
               <div className="text-right">
-                <div className="text-sm text-muted-foreground">Performance Score</div>
+                <div className="text-sm text-muted-foreground">Z-Score</div>
                 <div className="text-2xl font-bold text-primary">
-                  {metrics.performanceScore.toFixed(2)}
+                  {metrics.zScore.toFixed(2)}
                 </div>
               </div>
             </div>

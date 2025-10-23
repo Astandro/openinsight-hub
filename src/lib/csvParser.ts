@@ -26,7 +26,7 @@ const parseRow = (row: CSVRow): ParsedTicket | null => {
   try {
     const storyPoints = parseInt(row["Story Points"] || "0", 10) || 0;
     const createdDate = new Date(row["Created At"]);
-    const closedDate = row["Closed Date"] ? new Date(row["Updated At"]) : null;
+    const closedDate = new Date(row["Updated At"]);
     
     const cycleDays = closedDate 
       ? Math.round((closedDate.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24))
