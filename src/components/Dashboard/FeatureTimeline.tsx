@@ -5,11 +5,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { User, Building, Target, Clock, CalendarIcon, Star } from "lucide-react";
-import { ParsedTicket } from "@/types/openproject";
+import { ParsedTicket, Filters } from "@/types/openproject";
+import { applyFilters } from "@/lib/metrics";
 
 interface FeatureTimelineProps {
   tickets: ParsedTicket[];
-  timePeriod?: string;
+  filters: Filters;
 }
 
 interface TimelineFeature {
@@ -67,15 +68,15 @@ const FeatureRow = React.memo(({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <div className="h-12 flex items-center px-4 border-b border-border/50 hover:bg-muted/50 cursor-pointer transition-colors">
-          <div className="flex flex-col gap-0.5 w-full">
-            <div className="flex items-center gap-2">
+        <div className="h-12 flex items-center px-4 border-b border-border/50 hover:bg-muted/50 cursor-pointer transition-colors w-[400px]">
+          <div className="flex flex-col gap-0.5 w-full overflow-hidden">
+            <div className="flex items-center gap-2 overflow-hidden">
               <div className={`w-3 h-3 rounded-full ${getFeatureColor(index)} flex-shrink-0`} />
-              <span className="text-sm font-medium truncate">
+              <span className="text-sm font-medium truncate" title={feature.title}>
                 {feature.title}
               </span>
             </div>
-            <span className="text-xs text-muted-foreground pl-5">
+            <span className="text-xs text-muted-foreground pl-5 truncate" title={`${feature.project} • ${Object.entries(feature.assigneesByFunction).map(([func, assignees]) => `${assignees.length} ${func}`).join(', ')}`}>
               {feature.project} • {Object.entries(feature.assigneesByFunction).map(([func, assignees]) => 
                 `${assignees.length} ${func}`
               ).join(', ')}
@@ -176,44 +177,26 @@ const TimelineBar = React.memo(({
   totalDays: number;
 }) => {
   const barStyle = useMemo(() => {
-    const startOffset = getDaysBetween(startDate, feature.startDate);
-    const width = getDaysBetween(feature.startDate, feature.endDate);
+    // Calculate offset from timeline start
+    let startOffset = getDaysBetween(startDate, feature.startDate);
+    let endOffset = getDaysBetween(startDate, feature.endDate);
     
-    const adjustedStartOffset = Math.max(0, startOffset);
-    const adjustedWidth = Math.min(width, totalDays - adjustedStartOffset);
+    // Clamp to timeline bounds
+    startOffset = Math.max(0, Math.min(startOffset, totalDays));
+    endOffset = Math.max(0, Math.min(endOffset, totalDays));
+    
+    const width = endOffset - startOffset;
     
     return {
-      left: `${(adjustedStartOffset / totalDays) * 100}%`,
-      width: `${(adjustedWidth / totalDays) * 100}%`,
+      left: `${(startOffset / totalDays) * 100}%`,
+      width: `${Math.max(0, width / totalDays) * 100}%`,
     };
   }, [feature.startDate, feature.endDate, startDate, totalDays]);
 
   return (
-    <div className="relative h-12 border-b border-border/50">
+    <div className="relative h-12">
       {/* Timeline Bar */}
-      <div className="absolute top-1/2 -translate-y-1/2 left-0 right-0 h-6 rounded-md overflow-hidden">
-        {/* Timeline Grid Background */}
-        <div className="absolute inset-0 bg-muted/10">
-          {months.map((month) => {
-            const monthStart = new Date(month.year, month.month, 1);
-            const monthStartOffset = getDaysBetween(startDate, monthStart);
-            const monthWidth = getDaysInMonth(month.year, month.month);
-            const monthWidthPercent = (monthWidth / totalDays) * 100;
-            const monthStartPercent = (monthStartOffset / totalDays) * 100;
-            
-            return (
-              <div
-                key={`grid-${month.year}-${month.month}`}
-                className="absolute top-0 h-full border-r border-border/30"
-                style={{
-                  left: `${monthStartPercent}%`,
-                  width: `${monthWidthPercent}%`,
-                }}
-              />
-            );
-          })}
-        </div>
-        
+      <div className="absolute top-1/2 -translate-y-1/2 left-0 right-0 h-8 overflow-visible">
         {/* Feature Bar */}
         <motion.div
           className={`absolute top-0 h-full ${getFeatureColor(index)} opacity-80 hover:opacity-100 transition-opacity rounded-sm`}
@@ -245,53 +228,89 @@ const TimelineBar = React.memo(({
 
 TimelineBar.displayName = 'TimelineBar';
 
-export const FeatureTimeline = ({ tickets, timePeriod = "all" }: FeatureTimelineProps) => {
+export const FeatureTimeline = ({ tickets, filters }: FeatureTimelineProps) => {
   // State for pagination
   const [visibleCount, setVisibleCount] = useState(50);
   const ITEMS_PER_PAGE = 50;
-  
-  // Filter for features only (type: "Feature") and exclude certain keywords
-  const features = useMemo(() => tickets.filter(ticket => {
-    if (ticket.type !== "Feature") return false;
-    
-    const title = ticket.title.toLowerCase();
-    const subject = ticket.subject.toLowerCase();
-    const excludeKeywords = ['bug', 'iteration', 'improvement', 'operation'];
-    
-    return !excludeKeywords.some(keyword => 
-      title.includes(keyword) || subject.includes(keyword)
-    );
-  }), [tickets]);
 
   // Group features by name and merge them - memoized for performance
   const timelineFeatures: TimelineFeature[] = useMemo(() => {
     const featureMap = new Map<string, TimelineFeature>();
     
-    // First, identify all parent features (tickets without parentId that are Features)
-    const parentFeatures = features.filter(f => !f.parentId && f.closedDate);
+    // Step 1: Find ALL child tickets and apply filters to them
+    const allChildTickets = tickets.filter(t => t.parentId && t.closedDate);
+    const filteredChildTickets = applyFilters(allChildTickets, filters);
     
-    // Create feature entries for each parent
-    parentFeatures.forEach(feature => {
-      featureMap.set(feature.id, {
-        id: feature.id,
-        title: feature.title,
-        assignees: [feature.assignee],
-        assigneesByFunction: {
-          [feature.function]: [feature.assignee]
-        },
-        project: feature.project,
-        totalStoryPoints: feature.storyPoints, // Start with feature's own SP
-        startDate: feature.createdDate,
-        endDate: feature.closedDate!,
-        duration: 0,
-        ticketCount: 1,
-      });
+    console.log(`Found ${filteredChildTickets.length} child tickets (User Stories, Bugs, etc.) after applying sidebar filters`);
+    
+    // Step 2: Identify which FEATURES have at least one filtered child ticket
+    const featuresWithFilteredChildren = new Set<string>();
+    filteredChildTickets.forEach(child => {
+      if (child.parentId) {
+        featuresWithFilteredChildren.add(child.parentId);
+      }
     });
     
-    // Now find all child tickets and aggregate them to their parent features
-    tickets.forEach(ticket => {
-      if (ticket.parentId && featureMap.has(ticket.parentId) && ticket.closedDate) {
-        const featureEntry = featureMap.get(ticket.parentId)!;
+    console.log(`Features with filtered children: ${featuresWithFilteredChildren.size}`);
+    
+    // Step 3: Get ALL FEATURE-level tickets that have filtered children
+    const relevantFeatures = tickets.filter(t => 
+      t.normalizedType === "Feature" && 
+      !t.parentId &&
+      t.closedDate &&
+      featuresWithFilteredChildren.has(t.id)
+    );
+    
+    console.log(`Found ${relevantFeatures.length} FEATURE-level tickets with matching children:`, relevantFeatures.map(f => ({ 
+      id: f.id, 
+      title: f.title, 
+      type: f.type
+    })));
+    
+    // Create feature entries grouped by TITLE (not ID)
+    relevantFeatures.forEach(feature => {
+      const featureName = feature.title.trim();
+      
+      if (featureMap.has(featureName)) {
+        // Merge with existing feature with same name
+        const existing = featureMap.get(featureName)!;
+        // Update date range to earliest/latest
+        if (feature.createdDate < existing.startDate) {
+          existing.startDate = feature.createdDate;
+        }
+        if (feature.closedDate! > existing.endDate) {
+          existing.endDate = feature.closedDate!;
+        }
+      } else {
+        // Create new entry
+        featureMap.set(featureName, {
+          id: feature.id,
+          title: featureName,
+          assignees: [], // Will be populated from child tickets
+          assigneesByFunction: {},
+          project: feature.project,
+          totalStoryPoints: 0, // Will calculate from children only
+          startDate: feature.createdDate,
+          endDate: feature.closedDate!,
+          duration: 0,
+          ticketCount: 0, // Will count children only
+        });
+      }
+    });
+    
+    // Now aggregate child tickets to their parent features
+    // Need to find the feature by looking up the parent and getting its name
+    filteredChildTickets.forEach(ticket => {
+      // Find the parent feature
+      const parentFeature = tickets.find(t => t.id === ticket.parentId);
+      if (!parentFeature) return;
+      
+      const featureName = parentFeature.title.trim();
+      
+      if (featureMap.has(featureName)) {
+        const featureEntry = featureMap.get(featureName)!;
+        
+        console.log(`  ↳ Aggregating: ${ticket.type} (${ticket.assignee}/${ticket.function}) → Feature ${ticket.parentId}, SP: ${ticket.storyPoints}`);
         
         // Add assignee if not already in list
         if (!featureEntry.assignees.includes(ticket.assignee)) {
@@ -306,19 +325,21 @@ export const FeatureTimeline = ({ tickets, timePeriod = "all" }: FeatureTimeline
           featureEntry.assigneesByFunction[ticket.function].push(ticket.assignee);
         }
         
-        // Add story points from child ticket
+        // Add story points from child ticket (User Story, Bug, etc.)
         featureEntry.totalStoryPoints += ticket.storyPoints;
         
         // Increment ticket count
         featureEntry.ticketCount += 1;
         
-        // Update date range (leftmost start, rightmost end)
+        // Update date range: earliest createdDate, latest closedDate
         if (ticket.createdDate < featureEntry.startDate) {
           featureEntry.startDate = ticket.createdDate;
         }
         if (ticket.closedDate > featureEntry.endDate) {
           featureEntry.endDate = ticket.closedDate;
         }
+      } else {
+        console.warn(`⚠️  Child ticket ${ticket.id} (${ticket.type}) references missing FEATURE: ${ticket.parentId}`);
       }
     });
     
@@ -326,10 +347,15 @@ export const FeatureTimeline = ({ tickets, timePeriod = "all" }: FeatureTimeline
     const mergedFeatures = Array.from(featureMap.values());
     mergedFeatures.forEach(feature => {
       feature.duration = getDaysBetween(feature.startDate, feature.endDate);
+      console.log(`Feature ${feature.id}: ${feature.title}`, {
+        totalSP: feature.totalStoryPoints,
+        ticketCount: feature.ticketCount,
+        contributors: feature.assigneesByFunction
+      });
     });
     
     return mergedFeatures.sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
-  }, [features]);
+  }, [tickets, filters]);
 
   // Calculate timeline bounds based on timePeriod filter - memoized
   const { startDate, endDate, months, totalDays } = useMemo(() => {
@@ -346,7 +372,7 @@ export const FeatureTimeline = ({ tickets, timePeriod = "all" }: FeatureTimeline
     let calcStartDate: Date;
     let calcEndDate: Date;
     
-    if (timePeriod === "all") {
+    if (filters.timePeriod === "all") {
       // Use actual data bounds for "all"
       const allDates = timelineFeatures.flatMap(f => [f.startDate, f.endDate]);
       const minDate = new Date(Math.min(...allDates.map(d => d.getTime())));
@@ -362,7 +388,7 @@ export const FeatureTimeline = ({ tickets, timePeriod = "all" }: FeatureTimeline
         ? timelineFeatures[0].startDate.getFullYear() 
         : new Date().getFullYear();
       
-      if (timePeriod === "current_year") {
+      if (filters.timePeriod === "current_year") {
         calcStartDate = new Date(dataYear, 0, 1); // January 1st
         calcEndDate = new Date(dataYear, 11, 31); // December 31st
       } else {
@@ -374,7 +400,7 @@ export const FeatureTimeline = ({ tickets, timePeriod = "all" }: FeatureTimeline
           "Q4": { start: 9, end: 11 }   // Oct-Dec
         };
         
-        const quarter = quarterMap[timePeriod as keyof typeof quarterMap];
+        const quarter = quarterMap[filters.timePeriod as keyof typeof quarterMap];
         if (quarter) {
           calcStartDate = new Date(dataYear, quarter.start, 1);
           calcEndDate = new Date(dataYear, quarter.end + 1, 0); // Last day of the quarter
@@ -410,7 +436,7 @@ export const FeatureTimeline = ({ tickets, timePeriod = "all" }: FeatureTimeline
       months: calcMonths,
       totalDays: calcTotalDays
     };
-  }, [timelineFeatures, timePeriod]);
+  }, [timelineFeatures, filters.timePeriod]);
 
   // Get visible features for performance
   const visibleFeatures = useMemo(() => {
@@ -420,7 +446,7 @@ export const FeatureTimeline = ({ tickets, timePeriod = "all" }: FeatureTimeline
   // Reset visible count when tickets or time period changes
   useEffect(() => {
     setVisibleCount(50);
-  }, [tickets, timePeriod]);
+  }, [tickets, filters]);
 
   const hasMore = visibleCount < timelineFeatures.length;
   
@@ -429,7 +455,7 @@ export const FeatureTimeline = ({ tickets, timePeriod = "all" }: FeatureTimeline
   };
 
   // Early return for no features - AFTER all hooks
-  if (features.length === 0) {
+  if (timelineFeatures.length === 0) {
     return (
       <Card>
         <CardHeader>
@@ -493,11 +519,11 @@ export const FeatureTimeline = ({ tickets, timePeriod = "all" }: FeatureTimeline
           {/* Scrollable Timeline Container */}
           <div className="relative">
             {/* Fixed Title Column */}
-            <div className="absolute left-0 top-0 z-10 bg-background border-r border-border">
+            <div className="absolute left-0 top-0 z-10 bg-background border-r border-border w-[400px]">
               <div className="h-8 flex items-center px-4 text-xs font-medium text-muted-foreground border-b border-border">
                 Features
               </div>
-              <div className="space-y-2">
+              <div>
                 {visibleFeatures.map((feature, index) => (
                   <FeatureRow
                     key={feature.id}
@@ -509,7 +535,7 @@ export const FeatureTimeline = ({ tickets, timePeriod = "all" }: FeatureTimeline
             </div>
             
             {/* Scrollable Timeline Area */}
-            <div className="ml-[300px] overflow-x-auto">
+            <div className="ml-[400px] overflow-x-auto">
               {/* Month Headers */}
               <div className="relative h-8 border-b border-border min-w-[600px]">
                 {months.map((month, index) => {
@@ -543,7 +569,7 @@ export const FeatureTimeline = ({ tickets, timePeriod = "all" }: FeatureTimeline
               </div>
               
               {/* Timeline Bars */}
-              <div className="space-y-2 min-w-[600px]">
+              <div className="min-w-[600px]">
                 {visibleFeatures.map((feature, index) => (
                   <TimelineBar
                     key={feature.id}

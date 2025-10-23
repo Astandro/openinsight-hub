@@ -43,46 +43,61 @@ const getWeekNumber = (date: Date): number => {
 
 // Helper function to get feature contributions for an assignee
 const getFeatureContributions = (tickets: ParsedTicket[], assignee: string): FeatureContribution[] => {
+  // Track which FEATURE-level tickets this user contributed to
+  const featureSet = new Set<string>();
+  
   // Find all tickets assigned to this user
   const assigneeTickets = tickets.filter((t) => t.assignee === assignee);
   
-  // Track contributions: Map<featureId, contribution>
+  // Collect unique FEATURE IDs (from child tickets' parentId or if user is on FEATURE itself)
+  assigneeTickets.forEach(ticket => {
+    if (ticket.parentId) {
+      // This is a child ticket (User Story, Bug, etc.) - track its parent FEATURE
+      featureSet.add(ticket.parentId);
+    } else if (ticket.normalizedType === "Feature") {
+      // This user worked on the FEATURE ticket itself
+      featureSet.add(ticket.id);
+    }
+  });
+  
+  // Now build the contribution list from unique FEATURE-level tickets
+  // Use a Map to group by feature NAME (to combine duplicates)
   const contributionMap = new Map<string, FeatureContribution>();
   
-  assigneeTickets.forEach(ticket => {
-    // Determine the feature ID - either this ticket is a feature, or it has a parent
-    let featureId: string;
-    let featureName: string;
-    let project: string;
+  featureSet.forEach(featureId => {
+    // Find the FEATURE ticket (normalizedType === "Feature" and no parentId)
+    const parentFeature = tickets.find(t => 
+      t.id === featureId && 
+      !t.parentId && 
+      t.normalizedType === "Feature"
+    );
     
-    if (ticket.parentId) {
-      // This is a child ticket - find its parent feature
-      const parentFeature = tickets.find(t => t.id === ticket.parentId);
-      if (!parentFeature) return; // Skip if parent not found
-      
-      featureId = ticket.parentId;
-      featureName = parentFeature.title;
-      project = parentFeature.project;
-    } else if (ticket.type === "Feature" || ticket.normalizedType === "Feature") {
-      // This is a parent feature itself
-      featureId = ticket.id;
-      featureName = ticket.title;
-      project = ticket.project;
-    } else {
-      // Not a feature and has no parent - skip
+    if (!parentFeature) {
+      console.warn(`⚠️  FEATURE ${featureId} not found in tickets (user: ${assignee})`);
       return;
     }
     
-    // Add or update the contribution
-    if (contributionMap.has(featureId)) {
-      const existing = contributionMap.get(featureId)!;
-      existing.storyPoints += ticket.storyPoints;
+    // Calculate total story points from this user's work on child tickets ONLY
+    // (User Story, Bug, etc. under this FEATURE)
+    const userChildWork = tickets.filter(t => 
+      t.assignee === assignee && 
+      t.parentId === featureId
+    );
+    
+    const totalSP = userChildWork.reduce((sum, t) => sum + t.storyPoints, 0);
+    
+    const featureName = parentFeature.title.trim();
+    
+    // Group by feature name - if same name exists, sum the story points
+    if (contributionMap.has(featureName)) {
+      const existing = contributionMap.get(featureName)!;
+      existing.storyPoints += totalSP;
     } else {
-      contributionMap.set(featureId, {
+      contributionMap.set(featureName, {
         featureId,
         featureName,
-        storyPoints: ticket.storyPoints,
-        project,
+        storyPoints: totalSP,
+        project: parentFeature.project,
       });
     }
   });
@@ -92,7 +107,8 @@ const getFeatureContributions = (tickets: ParsedTicket[], assignee: string): Fea
 
 export const calculateAssigneeMetrics = (
   tickets: ParsedTicket[],
-  assignee: string
+  assignee: string,
+  allTickets?: ParsedTicket[] // Optional: use for feature contributions to avoid filter impact
 ): Omit<AssigneeMetrics, "zScore" | "performanceScore" | "utilizationIndex" | "flags"> => {
   const assigneeTickets = tickets.filter((t) => t.assignee === assignee);
   const closedTickets = assigneeTickets.filter((t) => t.status === "Closed");
@@ -123,9 +139,14 @@ export const calculateAssigneeMetrics = (
   // Calculate active weeks
   const activeWeeks = calculateActiveWeeks(closedTickets);
   
-  // Calculate feature contributions
-  const featureContributions = getFeatureContributions(tickets, assignee);
+  // Calculate feature contributions from ALL tickets (not filtered) to show true feature count
+  const ticketsForFeatures = allTickets || tickets;
+  const featureContributions = getFeatureContributions(ticketsForFeatures, assignee);
   const featureCount = featureContributions.length;
+  
+  if (featureContributions.length > 0) {
+    console.log(`${assignee}: featureCount=${featureCount}, contributions:`, featureContributions.map(f => f.featureName));
+  }
 
   return {
     assignee,
