@@ -1,6 +1,6 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Trophy, AlertTriangle, Target, Package, Bug, RotateCcw } from "lucide-react";
+import { Trophy, AlertTriangle, Target, Package, Bug, RotateCcw, Sparkles } from "lucide-react";
 import { AssigneeMetrics } from "@/types/openproject";
 import { motion } from "framer-motion";
 import { UserPopover } from "./UserPopover";
@@ -106,7 +106,7 @@ export const TopContributors = ({ metrics, tickets }: TopContributorsProps) => {
 
               {/* Badges */}
               {/* Metrics Grid */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">
                 <div className="flex items-center gap-1.5 text-sm">
                   <Target className="h-4 w-4 text-primary" />
                   <span className="font-semibold">{contributor.effectiveStoryPoints.toFixed(0)}</span>
@@ -116,6 +116,11 @@ export const TopContributors = ({ metrics, tickets }: TopContributorsProps) => {
                   <Package className="h-4 w-4 text-muted" />
                   <span className="font-semibold">{contributor.totalClosedTickets}</span>
                   <span className="text-muted-foreground text-xs">Tickets</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-sm">
+                  <Sparkles className="h-4 w-4 text-yellow-500" />
+                  <span className="font-semibold">{contributor.featureCount || 0}</span>
+                  <span className="text-muted-foreground text-xs">Features</span>
                 </div>
                 <div className="flex items-center gap-1.5 text-sm">
                   <Target className="h-4 w-4 text-accent" />

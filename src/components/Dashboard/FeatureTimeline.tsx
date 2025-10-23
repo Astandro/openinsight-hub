@@ -15,12 +15,14 @@ interface FeatureTimelineProps {
 interface TimelineFeature {
   id: string;
   title: string;
-  assignee: string;
+  assignees: string[]; // Multiple assignees who worked on this feature
+  assigneesByFunction: Record<string, string[]>; // Assignees grouped by function
   project: string;
-  storyPoints: number;
+  totalStoryPoints: number;
   startDate: Date;
   endDate: Date;
   duration: number; // in days
+  ticketCount: number; // Number of tickets merged
 }
 
 const getFeatureColor = (index: number) => {
@@ -66,19 +68,23 @@ const FeatureRow = React.memo(({
     <Popover>
       <PopoverTrigger asChild>
         <div className="h-12 flex items-center px-4 border-b border-border/50 hover:bg-muted/50 cursor-pointer transition-colors">
-          <div className="flex items-center gap-2">
-            <div className={`w-3 h-3 rounded-full ${getFeatureColor(index)}`} />
-            <span className="text-sm font-medium truncate max-w-[200px]">
-              {feature.title}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              {feature.project}
+          <div className="flex flex-col gap-0.5 w-full">
+            <div className="flex items-center gap-2">
+              <div className={`w-3 h-3 rounded-full ${getFeatureColor(index)} flex-shrink-0`} />
+              <span className="text-sm font-medium truncate">
+                {feature.title}
+              </span>
+            </div>
+            <span className="text-xs text-muted-foreground pl-5">
+              {feature.project} • {Object.entries(feature.assigneesByFunction).map(([func, assignees]) => 
+                `${assignees.length} ${func}`
+              ).join(', ')}
             </span>
           </div>
         </div>
       </PopoverTrigger>
       
-      <PopoverContent className="w-80" align="start">
+       <PopoverContent className="w-96" align="start">
         <div className="space-y-4">
           <div>
             <h4 className="font-semibold text-lg">{feature.title}</h4>
@@ -89,24 +95,24 @@ const FeatureRow = React.memo(({
             <div className="flex items-center gap-2">
               <User className="h-4 w-4 text-muted-foreground" />
               <div>
-                <p className="text-xs text-muted-foreground">Assignee</p>
-                <p className="text-sm font-medium">{feature.assignee}</p>
+                <p className="text-xs text-muted-foreground">Contributors</p>
+                <p className="text-sm font-medium">{feature.assignees.length}</p>
               </div>
             </div>
             
             <div className="flex items-center gap-2">
               <Building className="h-4 w-4 text-muted-foreground" />
               <div>
-                <p className="text-xs text-muted-foreground">Project</p>
-                <p className="text-sm font-medium">{feature.project}</p>
+                <p className="text-xs text-muted-foreground">Tickets</p>
+                <p className="text-sm font-medium">{feature.ticketCount}</p>
               </div>
             </div>
             
             <div className="flex items-center gap-2">
               <Target className="h-4 w-4 text-muted-foreground" />
               <div>
-                <p className="text-xs text-muted-foreground">Story Points</p>
-                <p className="text-sm font-medium">{feature.storyPoints} SP</p>
+                <p className="text-xs text-muted-foreground">Total SP</p>
+                <p className="text-sm font-medium">{feature.totalStoryPoints} SP</p>
               </div>
             </div>
             
@@ -133,6 +139,18 @@ const FeatureRow = React.memo(({
                 <p className="text-xs text-muted-foreground">End Date</p>
                 <p className="font-medium">{feature.endDate.toLocaleDateString()}</p>
               </div>
+            </div>
+          </div>
+          
+          {/* Contributors List */}
+          <div className="border-t pt-4">
+            <p className="text-xs text-muted-foreground mb-2">All Contributors:</p>
+            <div className="flex flex-wrap gap-1">
+              {feature.assignees.map(assignee => (
+                <Badge key={assignee} variant="secondary" className="text-xs">
+                  {assignee}
+                </Badge>
+              ))}
             </div>
           </div>
         </div>
@@ -217,7 +235,7 @@ const TimelineBar = React.memo(({
           }}
         >
           <div className="text-center truncate px-1">
-            {feature.duration}d
+            {feature.duration}d • {feature.totalStoryPoints}SP
           </div>
         </div>
       </div>
@@ -245,20 +263,73 @@ export const FeatureTimeline = ({ tickets, timePeriod = "all" }: FeatureTimeline
     );
   }), [tickets]);
 
-  // Transform features to timeline format - memoized for performance
-  const timelineFeatures: TimelineFeature[] = useMemo(() => features
-    .filter(feature => feature.closedDate)
-    .map(feature => ({
-      id: feature.id,
-      title: feature.title,
-      assignee: feature.assignee,
-      project: feature.project,
-      storyPoints: feature.storyPoints,
-      startDate: feature.createdDate,
-      endDate: feature.closedDate!,
-      duration: getDaysBetween(feature.createdDate, feature.closedDate!)
-    }))
-    .sort((a, b) => a.startDate.getTime() - b.startDate.getTime()), [features]);
+  // Group features by name and merge them - memoized for performance
+  const timelineFeatures: TimelineFeature[] = useMemo(() => {
+    const featureMap = new Map<string, TimelineFeature>();
+    
+    // First, identify all parent features (tickets without parentId that are Features)
+    const parentFeatures = features.filter(f => !f.parentId && f.closedDate);
+    
+    // Create feature entries for each parent
+    parentFeatures.forEach(feature => {
+      featureMap.set(feature.id, {
+        id: feature.id,
+        title: feature.title,
+        assignees: [feature.assignee],
+        assigneesByFunction: {
+          [feature.function]: [feature.assignee]
+        },
+        project: feature.project,
+        totalStoryPoints: feature.storyPoints, // Start with feature's own SP
+        startDate: feature.createdDate,
+        endDate: feature.closedDate!,
+        duration: 0,
+        ticketCount: 1,
+      });
+    });
+    
+    // Now find all child tickets and aggregate them to their parent features
+    tickets.forEach(ticket => {
+      if (ticket.parentId && featureMap.has(ticket.parentId) && ticket.closedDate) {
+        const featureEntry = featureMap.get(ticket.parentId)!;
+        
+        // Add assignee if not already in list
+        if (!featureEntry.assignees.includes(ticket.assignee)) {
+          featureEntry.assignees.push(ticket.assignee);
+        }
+        
+        // Track assignees by function
+        if (!featureEntry.assigneesByFunction[ticket.function]) {
+          featureEntry.assigneesByFunction[ticket.function] = [];
+        }
+        if (!featureEntry.assigneesByFunction[ticket.function].includes(ticket.assignee)) {
+          featureEntry.assigneesByFunction[ticket.function].push(ticket.assignee);
+        }
+        
+        // Add story points from child ticket
+        featureEntry.totalStoryPoints += ticket.storyPoints;
+        
+        // Increment ticket count
+        featureEntry.ticketCount += 1;
+        
+        // Update date range (leftmost start, rightmost end)
+        if (ticket.createdDate < featureEntry.startDate) {
+          featureEntry.startDate = ticket.createdDate;
+        }
+        if (ticket.closedDate > featureEntry.endDate) {
+          featureEntry.endDate = ticket.closedDate;
+        }
+      }
+    });
+    
+    // Recalculate durations after merging
+    const mergedFeatures = Array.from(featureMap.values());
+    mergedFeatures.forEach(feature => {
+      feature.duration = getDaysBetween(feature.startDate, feature.endDate);
+    });
+    
+    return mergedFeatures.sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
+  }, [features]);
 
   // Calculate timeline bounds based on timePeriod filter - memoized
   const { startDate, endDate, months, totalDays } = useMemo(() => {
