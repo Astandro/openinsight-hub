@@ -474,25 +474,6 @@ export const FeatureTimeline = ({ tickets, filters }: FeatureTimelineProps) => {
     );
   }
 
-  if (timelineFeatures.length === 0) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Star className="h-5 w-5 text-primary" />
-            Feature Timeline
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-center py-8 text-muted-foreground">
-            <Clock className="h-12 w-12 mx-auto mb-4 opacity-50" />
-            <p>No features with valid dates found</p>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
   return (
     <Card>
       <CardHeader>
@@ -517,7 +498,7 @@ export const FeatureTimeline = ({ tickets, filters }: FeatureTimelineProps) => {
           </div>
           
           {/* Scrollable Timeline Container */}
-          <div className="relative">
+          <div className="relative" key={`timeline-${filters.selectedFunction}-${filters.selectedProject}-${filters.timePeriod}`}>
             {/* Fixed Title Column */}
             <div className="absolute left-0 top-0 z-10 bg-background border-r border-border w-[400px]">
               <div className="h-8 flex items-center px-4 text-xs font-medium text-muted-foreground border-b border-border">
@@ -526,7 +507,7 @@ export const FeatureTimeline = ({ tickets, filters }: FeatureTimelineProps) => {
               <div>
                 {visibleFeatures.map((feature, index) => (
                   <FeatureRow
-                    key={feature.id}
+                    key={`${feature.title}-${index}`}
                     feature={feature}
                     index={index}
                   />
@@ -572,7 +553,7 @@ export const FeatureTimeline = ({ tickets, filters }: FeatureTimelineProps) => {
               <div className="min-w-[600px]">
                 {visibleFeatures.map((feature, index) => (
                   <TimelineBar
-                    key={feature.id}
+                    key={`${feature.title}-${index}`}
                     feature={feature}
                     index={index}
                     months={months}

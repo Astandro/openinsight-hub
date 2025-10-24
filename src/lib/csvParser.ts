@@ -64,6 +64,9 @@ const parseRow = (row: CSVRow): ParsedTicket | null => {
       }
     }
 
+    // Parse multiplier (default to 1.0 if not provided)
+    const multiplier = row.Multiplier ? parseFloat(row.Multiplier) : 1.0;
+
     const ticket = {
       id,
       title,
@@ -82,6 +85,7 @@ const parseRow = (row: CSVRow): ParsedTicket | null => {
       isRevise,
       cycleDays,
       parentId, // Use the parentId we calculated above
+      multiplier: isNaN(multiplier) ? 1.0 : multiplier, // Ensure valid number
     };
     
     // Debug logging for first few tickets
@@ -105,14 +109,14 @@ const parseRow = (row: CSVRow): ParsedTicket | null => {
 
 export const generateSampleData = (): ParsedTicket[] => {
   const assignees = [
-    { name: "Alice Johnson", function: "FE" as const },
-    { name: "Bob Smith", function: "BE" as const },
-    { name: "Charlie Brown", function: "QA" as const },
-    { name: "Diana Prince", function: "DESIGNER" as const },
-    { name: "Eve Martinez", function: "PRODUCT" as const },
-    { name: "Frank Castle", function: "BE" as const },
-    { name: "Grace Hopper", function: "FE" as const },
-    { name: "Henry Ford", function: "INFRA" as const },
+    { name: "Alice Johnson", function: "FE" as const, multiplier: 1.2 }, // Junior
+    { name: "Bob Smith", function: "BE" as const, multiplier: 1.0 }, // Senior
+    { name: "Charlie Brown", function: "QA" as const, multiplier: 0.8 }, // Mid
+    { name: "Diana Prince", function: "DESIGNER" as const, multiplier: 0.6 }, // Principal
+    { name: "Eve Martinez", function: "PRODUCT" as const, multiplier: 1.0 }, // Senior
+    { name: "Frank Castle", function: "BE" as const, multiplier: 0.8 }, // Mid
+    { name: "Grace Hopper", function: "FE" as const, multiplier: 1.0 }, // Senior
+    { name: "Henry Ford", function: "INFRA" as const, multiplier: 1.2 }, // Junior
   ];
 
   const projects = ["Orion", "Threat Intel", "Intellibron Aman", "Chatbot", "Website"];
@@ -139,6 +143,7 @@ export const generateSampleData = (): ParsedTicket[] => {
       function: assignee.function,
       status: "Closed",
       storyPoints: Math.floor(Math.random() * 8) + 1,
+      multiplier: assignee.multiplier,
       type,
       normalizedType: normalizeType(type),
       project: projects[Math.floor(Math.random() * projects.length)],

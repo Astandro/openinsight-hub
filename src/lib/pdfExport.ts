@@ -9,7 +9,7 @@ interface PDFExportData {
     totalClosedTickets: number;
     totalStoryPoints: number;
     avgCycleTime: number;
-    bugRate: number;
+    reviseRate: number;
     avgUtilization: number;
   };
   dateRange: string;
@@ -107,8 +107,8 @@ export const generatePDFReport = (data: PDFExportData) => {
   doc.text('Average Cycle Time (days)', 20, kpiY + 35);
   doc.text(data.kpiData.avgCycleTime.toFixed(1), 120, kpiY + 35);
   
-  doc.text('Bug Rate (%)', 20, kpiY + 45);
-  doc.text((data.kpiData.bugRate * 100).toFixed(1), 120, kpiY + 45);
+  doc.text('Revise Rate (%)', 20, kpiY + 45);
+  doc.text((data.kpiData.reviseRate * 100).toFixed(1), 120, kpiY + 45);
   
   doc.text('Average Utilization', 20, kpiY + 55);
   doc.text(data.kpiData.avgUtilization.toFixed(1), 120, kpiY + 55);

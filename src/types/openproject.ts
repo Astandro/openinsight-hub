@@ -27,6 +27,7 @@ export interface CSVRow {
   "Updated At": string;
   Subject: string;
   Parent?: string;
+  Multiplier?: string;
 }
 
 export interface ParsedTicket {
@@ -48,6 +49,7 @@ export interface ParsedTicket {
   normalizedType: "Feature" | "Bug" | "Regression" | "Improvement" | "Release" | "Task" | "Other";
   severity?: string;
   parentId?: string; // Parent feature ID for child tickets
+  multiplier: number; // Seniority multiplier (0.6=Principal, 0.8=Mid, 1.0=Senior, 1.2=Junior)
 }
 
 export interface FeatureContribution {
@@ -120,9 +122,12 @@ export interface Thresholds {
 }
 
 export interface Alert {
-  type: "top-performer" | "low-performer" | "high-bug" | "high-revise" | "overloaded" | "underutilized";
+  type: "achievement" | "quality-concern" | "overutilized" | "underutilized" | "optimal" | "workload-imbalance";
+  category: "project" | "function" | "cross-function";
   message: string;
-  assignee?: string;
+  actionable?: string; // Actionable recommendation
+  project?: string;
   function?: FunctionType;
+  assignee?: string;
   value?: number;
 }

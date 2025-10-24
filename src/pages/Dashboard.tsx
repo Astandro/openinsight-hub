@@ -13,6 +13,7 @@ import { TopContributors } from "@/components/Dashboard/TopContributors";
 import { AlertsBar } from "@/components/Dashboard/AlertsBar";
 import { Heatmap, type HeatmapDatum } from "@/components/Dashboard/Heatmap";
 import { FeatureTimeline } from "@/components/Dashboard/FeatureTimeline";
+import { UtilizationTrendline } from "@/components/Dashboard/UtilizationTrendline";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FileDown, RefreshCw, Settings, LogIn, Download, X, RotateCcw } from "lucide-react";
@@ -89,7 +90,8 @@ const Dashboard = () => {
             ? "Feature" 
             : ticket.normalizedType || "Other",
           severity: ticket.severity || "Medium",
-          parentId: ticket.parentId || undefined
+          parentId: ticket.parentId || undefined,
+          multiplier: ticket.multiplier || 1.0
         }));
         setTickets(transformedTickets);
       } else {
@@ -198,11 +200,20 @@ const Dashboard = () => {
       return [];
     }
     const assignees = Array.from(new Set(filteredTickets.map((t) => t.assignee)));
+    
+    // For feature contributions, we want to respect the PROJECT filter only
+    // (not function or time period), so users can see all features in a project
+    const projectFilteredTickets = filters.selectedProject 
+      ? tickets.filter(t => t.project === filters.selectedProject)
+      : tickets;
+    
     // Calculate metrics from filteredTickets for performance metrics
-    // But feature contributions will be calculated from ALL tickets inside calculateAssigneeMetrics
-    const metrics = assignees.map((assignee) => calculateAssigneeMetrics(filteredTickets, assignee, tickets));
+    // But feature contributions will be calculated from projectFilteredTickets
+    const metrics = assignees.map((assignee) => 
+      calculateAssigneeMetrics(filteredTickets, assignee, projectFilteredTickets)
+    );
     return calculateEnhancedMetrics(metrics, thresholds, filteredTickets);
-  }, [tickets, filteredTickets, thresholds]);
+  }, [tickets, filteredTickets, thresholds, filters.selectedProject]);
 
   const functionMetrics = useMemo(() => {
     if (!filteredTickets || filteredTickets.length === 0) {
@@ -245,8 +256,8 @@ const Dashboard = () => {
   }, [filteredTickets, assigneeMetrics]);
 
   const alerts = useMemo(
-    () => generateAlerts(assigneeMetrics, functionMetrics, thresholds),
-    [assigneeMetrics, functionMetrics, thresholds]
+    () => generateAlerts(assigneeMetrics, functionMetrics, thresholds, filteredTickets),
+    [assigneeMetrics, functionMetrics, thresholds, filteredTickets]
   );
 
   const excludedCount = useMemo(
@@ -532,6 +543,15 @@ const Dashboard = () => {
 
             {/* Function Performance */}
             <FunctionPerformance tickets={filteredTickets} selectedFunction={filters.selectedFunction} selectedProject={filters.selectedProject} />
+
+            {/* Utilization Trendline */}
+            <div className="mt-6">
+              <UtilizationTrendline 
+                tickets={filteredTickets} 
+                selectedFunction={filters.selectedFunction}
+                timePeriod={filters.timePeriod}
+              />
+            </div>
 
             <div className="mt-6">
               <Heatmap data={heatmapData} title="Project × Sprint Heatmap" />
