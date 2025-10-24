@@ -168,6 +168,100 @@ export const calculateAssigneeMetrics = (
   };
 };
 
+/**
+ * Calculate utilization index using improved methodology:
+ * Option C: Capacity-Based with 90th Percentile
+ * 
+ * 1. Calculate average SP per sprint for each person
+ * 2. Take 90th percentile (not max) as peak capacity per sprint
+ * 3. Function baseline = MEDIAN of all 90th percentiles in function
+ * 4. Utilization = (Average Sprint SP × Multiplier) / Function Baseline × 100%
+ */
+const calculateUtilizationIndex = (
+  tickets: ParsedTicket[],
+  assignee: string,
+  functionBaseline: number
+): number => {
+  const assigneeTickets = tickets.filter(
+    (t) => t.assignee === assignee && t.status === "Closed" && t.sprintClosed
+  );
+  
+  if (assigneeTickets.length === 0) return 0;
+  
+  // Group tickets by sprint and calculate SP per sprint
+  const sprintMap = new Map<string, number>();
+  assigneeTickets.forEach(ticket => {
+    const sprint = ticket.sprintClosed;
+    sprintMap.set(sprint, (sprintMap.get(sprint) || 0) + ticket.storyPoints);
+  });
+  
+  if (sprintMap.size === 0) return 0;
+  
+  // Calculate average SP per sprint
+  const sprintTotals = Array.from(sprintMap.values());
+  const avgSprintSP = sprintTotals.reduce((a, b) => a + b, 0) / sprintTotals.length;
+  
+  // Get the assignee's multiplier (use first ticket's multiplier)
+  const multiplier = assigneeTickets[0]?.multiplier || 1.0;
+  
+  // Calculate utilization: (Average Sprint SP × Multiplier) / Function Baseline × 100%
+  if (functionBaseline === 0) return 0;
+  
+  const utilization = (avgSprintSP * multiplier) / functionBaseline;
+  
+  // Return as percentage (can exceed 100% for over-utilized)
+  return utilization;
+};
+
+/**
+ * Calculate function baseline capacity using 90th percentile approach
+ * Returns median of all 90th percentiles within a function
+ */
+const calculateFunctionBaseline = (
+  tickets: ParsedTicket[],
+  func: FunctionType
+): number => {
+  const funcTickets = tickets.filter(
+    (t) => t.function === func && t.status === "Closed" && t.sprintClosed
+  );
+  
+  if (funcTickets.length === 0) return 1; // Avoid division by zero
+  
+  // Group by assignee
+  const assigneeMap = new Map<string, Map<string, number>>();
+  funcTickets.forEach(ticket => {
+    if (!assigneeMap.has(ticket.assignee)) {
+      assigneeMap.set(ticket.assignee, new Map());
+    }
+    const sprintMap = assigneeMap.get(ticket.assignee)!;
+    const sprint = ticket.sprintClosed;
+    sprintMap.set(sprint, (sprintMap.get(sprint) || 0) + ticket.storyPoints);
+  });
+  
+  // Calculate 90th percentile for each assignee
+  const percentile90s: number[] = [];
+  assigneeMap.forEach((sprintMap, assignee) => {
+    const sprintTotals = Array.from(sprintMap.values()).sort((a, b) => a - b);
+    if (sprintTotals.length > 0) {
+      // Calculate 90th percentile
+      const index = Math.floor(sprintTotals.length * 0.9);
+      const p90 = sprintTotals[Math.min(index, sprintTotals.length - 1)];
+      percentile90s.push(p90);
+    }
+  });
+  
+  if (percentile90s.length === 0) return 1;
+  
+  // Return median of all 90th percentiles
+  const sorted = percentile90s.sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const median = sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid];
+  
+  return median;
+};
+
 // Enhanced performance scoring with holistic metrics
 export const calculateEnhancedMetrics = (
   metrics: Omit<AssigneeMetrics, "zScore" | "performanceScore" | "utilizationIndex" | "flags">[],
@@ -193,7 +287,16 @@ export const calculateEnhancedMetrics = (
     functionGroups.get(metric.function)!.push(metric);
   });
   
-  // Calculate function medians and averages
+  // Calculate function baselines using 90th percentile methodology
+  const functionBaselines = new Map<FunctionType, number>();
+  const FUNCTIONS: FunctionType[] = ["BE", "FE", "QA", "DESIGNER", "PRODUCT", "INFRA", "BUSINESS SUPPORT", "RESEARCHER", "FOUNDRY", "UX WRITER"];
+  FUNCTIONS.forEach(func => {
+    const baseline = calculateFunctionBaseline(tickets, func);
+    functionBaselines.set(func, baseline);
+    console.log(`📊 Function ${func} baseline: ${baseline.toFixed(2)} SP`);
+  });
+  
+  // Keep function stats for backward compatibility with other features
   const functionStats = new Map<string, { medianSP: number, avgActiveWeeks: number }>();
   functionGroups.forEach((funcMetrics, func) => {
     const spValues = funcMetrics.map(m => m.effectiveStoryPoints).sort((a, b) => a - b);
@@ -214,52 +317,18 @@ export const calculateEnhancedMetrics = (
     const bugPenalty = Math.max(0.1, 1 - (m.bugRateClosed * (thresholds.bugRatePenalty || 0.5)));
     const performanceScore = isNaN(baseScore * revisePenalty * bugPenalty) ? 0 : baseScore * revisePenalty * bugPenalty;
     
-    // Calculate enhanced utilization index considering multiple factors
-    const funcStats = functionStats.get(m.function);
-    let utilizationIndex = 0;
-    if (funcStats && funcStats.medianSP > 0) {
-      // Factor 1: Story Points relative to function median (40% weight)
-      const spFactor = Math.min(1, m.effectiveStoryPoints / funcStats.medianSP);
-      
-      // Factor 2: Ticket count relative to function average (25% weight)
-      const funcTicketCounts = functionGroups.get(m.function)?.map(fm => fm.totalClosedTickets) || [];
-      const avgTickets = funcTicketCounts.reduce((sum, tc) => sum + tc, 0) / funcTicketCounts.length;
-      const ticketFactor = avgTickets > 0 ? Math.min(1, m.totalClosedTickets / avgTickets) : 0;
-      
-      // Factor 3: Project variety relative to function average (20% weight)
-      const funcProjectVarieties = functionGroups.get(m.function)?.map(fm => fm.projectVariety) || [];
-      const avgProjects = funcProjectVarieties.reduce((sum, pv) => sum + pv, 0) / funcProjectVarieties.length;
-      const projectFactor = avgProjects > 0 ? Math.min(1, m.projectVariety / avgProjects) : 0;
-      
-      // Factor 4: Active weeks relative to function average (10% weight)
-      const funcActiveWeeks = functionGroups.get(m.function)?.map(fm => fm.activeWeeks) || [];
-      const avgActiveWeeks = funcActiveWeeks.reduce((sum, aw) => sum + aw, 0) / funcActiveWeeks.length;
-      const weeksFactor = avgActiveWeeks > 0 ? Math.min(1, m.activeWeeks / avgActiveWeeks) : 0;
-      
-      // Factor 5: Heatmap density (activity consistency) (15% weight)
-      const userTickets = tickets.filter(t => t.assignee === m.assignee && t.status === "Closed");
-      const sprintActivity = new Map<string, number>();
-      userTickets.forEach(ticket => {
-        if (ticket.sprintClosed) {
-          sprintActivity.set(ticket.sprintClosed, (sprintActivity.get(ticket.sprintClosed) || 0) + 1);
-        }
-      });
-      const activeSprints = sprintActivity.size;
-      const totalSprints = new Set(tickets.map(t => t.sprintClosed).filter(Boolean)).size;
-      const heatmapDensity = totalSprints > 0 ? activeSprints / totalSprints : 0;
-      
-      // Weighted combination of all factors
-      utilizationIndex = (
-        spFactor * 0.4 +
-        ticketFactor * 0.25 +
-        projectFactor * 0.2 +
-        weeksFactor * 0.1 +
-        heatmapDensity * 0.15
-      );
-    }
+    // Calculate NEW utilization index using Option C methodology
+    // Utilization = (Average Sprint SP × Multiplier) / Function Baseline × 100%
+    const functionBaseline = functionBaselines.get(m.function as FunctionType) || 1;
+    const utilizationIndex = calculateUtilizationIndex(tickets, m.assignee, functionBaseline);
+    
+    console.log(`👤 ${m.assignee} (${m.function}): Utilization = ${(utilizationIndex * 100).toFixed(1)}%`);
     
     // Determine flags based on function-relative performance and utilization
     const flags: string[] = [];
+    
+    // Get function stats for this assignee's function
+    const funcStats = functionStats.get(m.function);
     
     // Get function-specific performance scores for comparison
     const funcMetrics = functionGroups.get(m.function) || [];
