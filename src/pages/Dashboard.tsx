@@ -14,6 +14,7 @@ import { AlertsBar } from "@/components/Dashboard/AlertsBar";
 import { Heatmap, type HeatmapDatum } from "@/components/Dashboard/Heatmap";
 import { FeatureTimeline } from "@/components/Dashboard/FeatureTimeline";
 import { UtilizationTrendline } from "@/components/Dashboard/UtilizationTrendline";
+import { TeamEfficiency } from "@/components/Dashboard/TeamEfficiency";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FileDown, RefreshCw, Settings, LogIn, Download, X, RotateCcw } from "lucide-react";
@@ -547,6 +548,15 @@ const Dashboard = () => {
             {/* Utilization Trendline */}
             <div className="mt-6">
               <UtilizationTrendline 
+                tickets={filteredTickets} 
+                selectedFunction={filters.selectedFunction}
+                timePeriod={filters.timePeriod}
+              />
+            </div>
+
+            {/* Team Efficiency */}
+            <div className="mt-6">
+              <TeamEfficiency 
                 tickets={filteredTickets} 
                 selectedFunction={filters.selectedFunction}
                 timePeriod={filters.timePeriod}
