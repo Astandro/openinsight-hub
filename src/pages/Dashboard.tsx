@@ -15,6 +15,7 @@ import { Heatmap, type HeatmapDatum } from "@/components/Dashboard/Heatmap";
 import { FeatureTimeline } from "@/components/Dashboard/FeatureTimeline";
 import { UtilizationTrendline } from "@/components/Dashboard/UtilizationTrendline";
 import { TeamEfficiency } from "@/components/Dashboard/TeamEfficiency";
+import { DeliverySpeed } from "@/components/Dashboard/DeliverySpeed";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FileDown, RefreshCw, Settings, LogIn, Download, X, RotateCcw } from "lucide-react";
@@ -560,6 +561,14 @@ const Dashboard = () => {
                 tickets={filteredTickets} 
                 selectedFunction={filters.selectedFunction}
                 timePeriod={filters.timePeriod}
+              />
+            </div>
+
+            {/* Delivery Speed */}
+            <div className="mt-6">
+              <DeliverySpeed 
+                tickets={filteredTickets} 
+                selectedFunction={filters.selectedFunction}
               />
             </div>
 

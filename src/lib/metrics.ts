@@ -469,8 +469,10 @@ export const applyFilters = (tickets: ParsedTicket[], filters: any): ParsedTicke
 
   if (filters.timePeriod !== "all") {
     // Get the year from the actual data instead of current year
-    const dataYear = filtered.length > 0 && filtered[0].closedDate 
-      ? filtered[0].closedDate.getFullYear() 
+    // Use original tickets array to find the most recent year, not filtered
+    const ticketsWithDates = tickets.filter(t => t.closedDate);
+    const dataYear = ticketsWithDates.length > 0
+      ? Math.max(...ticketsWithDates.map(t => t.closedDate!.getFullYear()))
       : new Date().getFullYear();
     
     let startDate: Date;

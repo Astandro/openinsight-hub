@@ -383,9 +383,9 @@ export const FeatureTimeline = ({ tickets, filters }: FeatureTimelineProps) => {
       calcEndDate.setDate(calcEndDate.getDate() + 7);
     } else {
       // Use filter-based bounds
-      // Get the year from the actual data instead of current year
+      // Get the most recent year from the actual data instead of current year
       const dataYear = timelineFeatures.length > 0 
-        ? timelineFeatures[0].startDate.getFullYear() 
+        ? Math.max(...timelineFeatures.map(f => Math.max(f.startDate.getFullYear(), f.endDate.getFullYear())))
         : new Date().getFullYear();
       
       if (filters.timePeriod === "current_year") {

@@ -28,9 +28,59 @@ const parseRow = (row: CSVRow): ParsedTicket | null => {
     const createdDate = new Date(row["Created At"]);
     const closedDate = row["Updated At"] ? new Date(row["Updated At"]) : null;
     
-    const cycleDays = closedDate 
-      ? Math.round((closedDate.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24))
-      : null;
+    // Calculate cycle days using multiple methods and pick the shortest (most optimistic)
+    // This prevents inflated cycle times from parked/blocked tickets
+    const cycleDaysOptions: number[] = [];
+    
+    // Method 1: Start Date (if exists) to Updated At
+    if (closedDate && row["Start Date"]) {
+      const startDate = new Date(row["Start Date"]);
+      if (!isNaN(startDate.getTime())) {
+        const daysFromStart = Math.round((closedDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+        if (daysFromStart >= 1 && daysFromStart <= 180) {
+          cycleDaysOptions.push(daysFromStart);
+        }
+      }
+    }
+    
+    // Method 2: Created At to Updated At
+    if (closedDate) {
+      const daysFromCreated = Math.round((closedDate.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24));
+      if (daysFromCreated >= 1 && daysFromCreated <= 180) {
+        cycleDaysOptions.push(daysFromCreated);
+      }
+    }
+    
+    // Method 3: Sprint Created to Sprint Closed (sprint-based calculation)
+    const sprintCreated = row["Sprint Created"];
+    const sprintClosed = row["Sprint Closed"];
+    
+    if (sprintClosed && sprintClosed !== "#N/A" && sprintCreated && sprintCreated !== "#N/A") {
+      // Extract sprint numbers (e.g., "Sprint 16" -> 16)
+      const sprintClosedNum = parseInt(sprintClosed.replace(/\D/g, ""), 10);
+      const sprintCreatedNum = parseInt(sprintCreated.replace(/\D/g, ""), 10);
+      
+      if (!isNaN(sprintClosedNum) && !isNaN(sprintCreatedNum)) {
+        // Calculate number of sprints (inclusive of both start and end sprint)
+        const sprintCount = Math.max(1, sprintClosedNum - sprintCreatedNum + 1);
+        // Assume 14 days (2 weeks) per sprint
+        const sprintBasedDays = sprintCount * 14;
+        if (sprintBasedDays >= 1 && sprintBasedDays <= 180) {
+          cycleDaysOptions.push(sprintBasedDays);
+        }
+      }
+    }
+    
+    // Pick the shortest duration (most optimistic, removes parking/blocking time)
+    let cycleDays: number | null = null;
+    if (cycleDaysOptions.length > 0) {
+      cycleDays = Math.min(...cycleDaysOptions);
+    }
+    
+    // Fallback: if no valid options, ensure minimum of 1 day for closed tickets
+    if (cycleDays === null && closedDate) {
+      cycleDays = 1;
+    }
 
     const subject = row.Subject || "";
     const type = row.Type || "Task";
