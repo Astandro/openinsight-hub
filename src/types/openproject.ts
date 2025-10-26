@@ -25,6 +25,7 @@ export interface CSVRow {
   "Sprint Created": string;
   "Created At": string;
   "Updated At": string;
+  "Start Date"?: string; // Optional start date column
   Subject: string;
   Parent?: string;
   Multiplier?: string;
