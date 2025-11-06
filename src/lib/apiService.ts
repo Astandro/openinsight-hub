@@ -1,7 +1,26 @@
 import { ParsedTicket, Filters, Thresholds } from '@/types/openproject';
 import { getAuthToken } from './serverAuth';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://10.110.11.37:3001/api';
+// Auto-detect protocol based on current page, or use environment variable
+const getApiBaseUrl = () => {
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL;
+  }
+  
+  // Use same protocol as the current page
+  const protocol = window.location.protocol; // 'http:' or 'https:'
+  const hostname = window.location.hostname;
+  
+  // If using domain name, use HTTPS. If using IP, use HTTP
+  if (hostname.includes('.')) {
+    return `https://${hostname}:3001/api`;
+  }
+  
+  // Fallback to IP with HTTP
+  return 'http://10.110.11.37:3001/api';
+};
+
+const API_BASE_URL = getApiBaseUrl();
 
 export interface ApiResponse {
   tickets: ParsedTicket[];
