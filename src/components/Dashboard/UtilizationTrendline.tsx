@@ -109,7 +109,8 @@ export const UtilizationTrendline = ({
       (t) => t.status === "Closed" && 
             t.closedDate && 
             t.sprintClosed !== "#N/A" && 
-            t.assignee !== "#N/A"
+            t.assignee !== "#N/A" &&
+            t.function !== "#N/A"
     );
     
     if (closedTickets.length === 0) return [];
@@ -174,8 +175,9 @@ export const UtilizationTrendline = ({
         });
       } else {
         // Show function-level data (average utilization per function)
-        const activeFunctions = Array.from(
-          new Set(closedTickets.map(t => t.function))
+        // Use all functions that have any data across all quarters
+        const activeFunctions = FUNCTIONS.filter(func => 
+          closedTickets.some(t => t.function === func)
         );
         
         return sortedQuarters.map(quarter => {
@@ -192,6 +194,9 @@ export const UtilizationTrendline = ({
               );
               const avgUtilization = utilizations.reduce((a, b) => a + b, 0) / utilizations.length;
               dataPoint[func] = avgUtilization * 100;
+            } else {
+              // Set to 0 if no data for this quarter but function exists in other quarters
+              dataPoint[func] = 0;
             }
           });
           
@@ -241,8 +246,9 @@ export const UtilizationTrendline = ({
         });
       } else {
         // Show function-level data (average utilization per function)
-        const activeFunctions = Array.from(
-          new Set(closedTickets.map(t => t.function))
+        // Use all functions that have any data across all sprints
+        const activeFunctions = FUNCTIONS.filter(func => 
+          closedTickets.some(t => t.function === func)
         );
         
         return sortedSprints.map(sprint => {
@@ -259,6 +265,9 @@ export const UtilizationTrendline = ({
               );
               const avgUtilization = utilizations.reduce((a, b) => a + b, 0) / utilizations.length;
               dataPoint[func] = avgUtilization * 100;
+            } else {
+              // Set to 0 if no data for this sprint but function exists in other sprints
+              dataPoint[func] = 0;
             }
           });
           
@@ -483,7 +492,7 @@ export const UtilizationTrendline = ({
                   boxShadow: "0 8px 16px rgba(0, 0, 0, 0.4)",
                   padding: "12px",
                 }}
-                formatter={(value: any) => [`${value.toFixed(1)}%`, ""]}
+                formatter={(value: any, name: string) => [`${value.toFixed(1)}%`, name]}
                 labelStyle={{ color: "#f9fafb", fontWeight: 600, marginBottom: "8px" }}
                 itemStyle={{ color: "#e5e7eb", padding: "4px 0" }}
               />
