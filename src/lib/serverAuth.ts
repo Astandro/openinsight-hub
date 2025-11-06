@@ -1,20 +1,14 @@
-// Auto-detect protocol based on current page, or use environment variable
+// Auto-detect API URL based on current page
 const getApiBaseUrl = () => {
+  // If environment variable is set at build time, use it
   if (import.meta.env.VITE_API_BASE_URL) {
     return import.meta.env.VITE_API_BASE_URL;
   }
   
-  // Use same protocol as the current page
-  const protocol = window.location.protocol; // 'http:' or 'https:'
+  // Otherwise, use current hostname with port 3001
+  // Always use HTTP for now (no SSL requirement)
   const hostname = window.location.hostname;
-  
-  // If using domain name, use HTTPS. If using IP, use HTTP
-  if (hostname.includes('.')) {
-    return `https://${hostname}:3001/api`;
-  }
-  
-  // Fallback to IP with HTTP
-  return 'http://10.110.11.37:3001/api';
+  return `http://${hostname}:3001/api`;
 };
 
 const API_BASE_URL = getApiBaseUrl();

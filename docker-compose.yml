@@ -4,12 +4,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.frontend
+      args:
+        # Vite environment variables must be set at BUILD time
+        # Leave empty to auto-detect at runtime based on hostname
+        - VITE_API_BASE_URL=
     ports:
       - "80:80"
     depends_on:
       - teamlight-backend
-    environment:
-      - VITE_API_BASE_URL=http://teamlight-backend:3001/api
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
