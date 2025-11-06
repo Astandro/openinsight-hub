@@ -20,6 +20,7 @@ import { Tooltip as UITooltip, TooltipContent, TooltipProvider, TooltipTrigger }
 interface DeliverySpeedProps {
   tickets: ParsedTicket[];
   selectedFunction: FunctionType | null;
+  timePeriod?: string;
 }
 
 interface SpeedData {
@@ -70,6 +71,7 @@ const removeOutliers = (rates: number[]): number[] => {
 export const DeliverySpeed = ({
   tickets,
   selectedFunction,
+  timePeriod = "all",
 }: DeliverySpeedProps) => {
   const speedData = useMemo(() => {
     // Filter for closed tickets with User Story or Bug type only
@@ -208,6 +210,74 @@ export const DeliverySpeed = ({
     }
   }, [tickets, selectedFunction]);
   
+  // Calculate speed trend over time
+  const speedTrend = useMemo(() => {
+    const closedTickets = tickets.filter(
+      (t) => t.status === "Closed" && 
+            t.storyPoints > 0 &&
+            t.assignee !== "#N/A" &&
+            t.sprintClosed !== "#N/A" &&
+            t.sprintClosed !== "" &&
+            t.function !== "#N/A" &&
+            (t.normalizedType === "Feature" || t.normalizedType === "Bug" || 
+             t.type.toLowerCase().includes("user story") || t.type.toLowerCase().includes("story"))
+    );
+    
+    if (closedTickets.length < 3) return null;
+    
+    // Group by sprint and calculate speed for each sprint
+    const sprintSpeedMap = new Map<string, { totalSP: number; count: number }>();
+    
+    closedTickets.forEach(ticket => {
+      const sprint = ticket.sprintClosed;
+      if (!sprintSpeedMap.has(sprint)) {
+        sprintSpeedMap.set(sprint, { totalSP: 0, count: 0 });
+      }
+      const data = sprintSpeedMap.get(sprint)!;
+      data.totalSP += ticket.storyPoints;
+      data.count += 1;
+    });
+    
+    // Convert to array and sort by sprint
+    const sprintSpeeds = Array.from(sprintSpeedMap.entries())
+      .map(([sprint, data]) => ({
+        sprint,
+        spPerDay: data.totalSP / 10, // Assume 10 working days per sprint
+        daysPerSP: data.totalSP > 0 ? 10 / data.totalSP : 0,
+      }))
+      .sort((a, b) => a.sprint.localeCompare(b.sprint));
+    
+    if (sprintSpeeds.length < 2) return null;
+    
+    // Calculate trend using linear regression
+    const n = sprintSpeeds.length;
+    const timeIndices = sprintSpeeds.map((_, i) => i);
+    const daysPerSPValues = sprintSpeeds.map(s => s.daysPerSP);
+    
+    // Linear regression
+    const sumX = timeIndices.reduce((a, b) => a + b, 0);
+    const sumY = daysPerSPValues.reduce((a, b) => a + b, 0);
+    const sumXY = timeIndices.reduce((sum, xi, i) => sum + xi * daysPerSPValues[i], 0);
+    const sumXX = timeIndices.reduce((sum, xi) => sum + xi * xi, 0);
+    
+    const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+    const avgSpeed = sumY / n;
+    
+    // Calculate percentage change
+    const percentChange = avgSpeed > 0 ? (slope / avgSpeed) * 100 * n : 0;
+    
+    // Determine trend (negative slope = getting faster, positive = getting slower)
+    const trend = slope < -0.5 ? "improving" : slope > 0.5 ? "declining" : "stable";
+    
+    return {
+      trend,
+      percentChange: percentChange.toFixed(1),
+      slope: slope.toFixed(2),
+      avgSpeed: avgSpeed.toFixed(1),
+      sprintCount: n,
+    };
+  }, [tickets, selectedFunction]);
+  
   // Calculate insights
   const insights = useMemo(() => {
     if (speedData.length === 0) return null;
@@ -228,8 +298,9 @@ export const DeliverySpeed = ({
       speedVariation: speedVariation.toFixed(1),
       variationPercent: variationPercent.toFixed(0),
       isHighVariation,
+      speedTrend,
     };
-  }, [speedData]);
+  }, [speedData, speedTrend]);
   
   const title = selectedFunction
     ? `${selectedFunction} Team Delivery Speed`
@@ -344,18 +415,65 @@ export const DeliverySpeed = ({
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: 0.3 }}
-                className="p-3 rounded-lg bg-gradient-to-br from-red-500/10 to-red-500/5 border border-red-500/20"
+                className={`p-3 rounded-lg bg-gradient-to-br border ${
+                  insights.speedTrend
+                    ? insights.speedTrend.trend === "improving"
+                      ? "from-green-500/10 to-green-500/5 border-green-500/20"
+                      : insights.speedTrend.trend === "declining"
+                      ? "from-red-500/10 to-red-500/5 border-red-500/20"
+                      : "from-gray-500/10 to-gray-500/5 border-gray-500/20"
+                    : "from-gray-500/10 to-gray-500/5 border-gray-500/20"
+                }`}
               >
-                <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
-                  <AlertCircle className="h-3 w-3" />
-                  Slowest
-                </div>
-                <div className="text-lg font-bold text-red-600 dark:text-red-400">
-                  {insights.slowest.name}
-                </div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  {insights.slowest.daysPerSP} days/5SP
-                </div>
+                <TooltipProvider>
+                  <UITooltip>
+                    <TooltipTrigger asChild>
+                      <div className="cursor-help">
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
+                          <Zap className="h-3 w-3" />
+                          Speed Trend
+                          <Info className="h-3 w-3" />
+                        </div>
+                        {insights.speedTrend ? (
+                          <>
+                            <div className={`text-lg font-bold capitalize ${
+                              insights.speedTrend.trend === "improving"
+                                ? "text-green-600 dark:text-green-400"
+                                : insights.speedTrend.trend === "declining"
+                                ? "text-red-600 dark:text-red-400"
+                                : "text-gray-600 dark:text-gray-400"
+                            }`}>
+                              {insights.speedTrend.trend === "improving" ? "↗ " : insights.speedTrend.trend === "declining" ? "↘ " : "→ "}
+                              {insights.speedTrend.trend}
+                            </div>
+                            <div className="text-xs text-muted-foreground mt-1">
+                              {parseFloat(insights.speedTrend.percentChange) > 0 ? "+" : ""}{insights.speedTrend.percentChange}% over time
+                            </div>
+                          </>
+                        ) : (
+                          <div className="text-sm text-muted-foreground">
+                            Need more data
+                          </div>
+                        )}
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      {insights.speedTrend ? (
+                        <p>
+                          Delivery speed is <strong>{insights.speedTrend.trend}</strong> over time.
+                          {insights.speedTrend.trend === "improving" 
+                            ? " Team is getting faster at completing work (fewer days per SP)."
+                            : insights.speedTrend.trend === "declining"
+                            ? " Team is slowing down (more days per SP). Consider investigating blockers or workload."
+                            : " Speed remains relatively stable across sprints."}
+                          {" "}Analysis based on {insights.speedTrend.sprintCount} sprints.
+                        </p>
+                      ) : (
+                        <p>Need at least 3 sprints of data to calculate speed trend.</p>
+                      )}
+                    </TooltipContent>
+                  </UITooltip>
+                </TooltipProvider>
               </motion.div>
               
               <motion.div

@@ -41,7 +41,8 @@ export const TeamEfficiency = ({
       (t) => t.status === "Closed" && 
             t.closedDate && 
             t.sprintClosed !== "#N/A" && 
-            t.assignee !== "#N/A"
+            t.assignee !== "#N/A" &&
+            t.function !== "#N/A"
     );
     
     if (closedTickets.length === 0) return [];
@@ -121,45 +122,90 @@ export const TeamEfficiency = ({
     }
   }, [tickets, timePeriod]);
   
-  // Calculate insights
+  // Calculate statistical insights using linear regression
   const insights = useMemo(() => {
     if (chartData.length < 2) return null;
     
-    const firstPeriod = chartData[0];
-    const lastPeriod = chartData[chartData.length - 1];
+    const n = chartData.length;
     
-    const spGrowth = lastPeriod.storyPoints - firstPeriod.storyPoints;
-    const spGrowthPercent = firstPeriod.storyPoints > 0 
-      ? ((spGrowth / firstPeriod.storyPoints) * 100).toFixed(1)
-      : 0;
+    // Calculate linear regression for Team Size vs Story Points
+    const teamSizes = chartData.map(d => d.teamSize);
+    const storyPoints = chartData.map(d => d.storyPoints);
+    const spPerPersonValues = chartData.map(d => d.spPerPerson);
     
-    const teamGrowth = lastPeriod.teamSize - firstPeriod.teamSize;
-    const teamGrowthPercent = firstPeriod.teamSize > 0
-      ? ((teamGrowth / firstPeriod.teamSize) * 100).toFixed(1)
-      : 0;
+    // Helper: Calculate linear regression
+    const linearRegression = (x: number[], y: number[]) => {
+      const n = x.length;
+      const sumX = x.reduce((a, b) => a + b, 0);
+      const sumY = y.reduce((a, b) => a + b, 0);
+      const sumXY = x.reduce((sum, xi, i) => sum + xi * y[i], 0);
+      const sumXX = x.reduce((sum, xi) => sum + xi * xi, 0);
+      const sumYY = y.reduce((sum, yi) => sum + yi * yi, 0);
+      
+      const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+      const intercept = (sumY - slope * sumX) / n;
+      
+      // Calculate R² (coefficient of determination)
+      const meanY = sumY / n;
+      const ssTotal = sumYY - n * meanY * meanY;
+      const ssResidual = y.reduce((sum, yi, i) => {
+        const predicted = slope * x[i] + intercept;
+        return sum + Math.pow(yi - predicted, 2);
+      }, 0);
+      const rSquared = 1 - (ssResidual / ssTotal);
+      
+      return { slope, intercept, rSquared: Math.max(0, Math.min(1, rSquared)) };
+    };
     
-    const avgSPPerPerson = chartData.reduce((sum, d) => sum + d.spPerPerson, 0) / chartData.length;
+    // Regression: Team Size vs Story Points
+    const spRegression = linearRegression(teamSizes, storyPoints);
     
-    // Calculate efficiency trend (is SP/person improving or declining?)
-    const firstHalfAvg = chartData
-      .slice(0, Math.floor(chartData.length / 2))
-      .reduce((sum, d) => sum + d.spPerPerson, 0) / Math.floor(chartData.length / 2);
+    // Regression: Team Size vs SP/Person (efficiency)
+    const efficiencyRegression = linearRegression(teamSizes, spPerPersonValues);
     
-    const secondHalfAvg = chartData
-      .slice(Math.floor(chartData.length / 2))
-      .reduce((sum, d) => sum + d.spPerPerson, 0) / Math.ceil(chartData.length / 2);
+    // Calculate average metrics
+    const avgTeamSize = teamSizes.reduce((a, b) => a + b, 0) / n;
+    const avgSP = storyPoints.reduce((a, b) => a + b, 0) / n;
+    const avgSPPerPerson = spPerPersonValues.reduce((a, b) => a + b, 0) / n;
     
-    const efficiencyTrend = secondHalfAvg > firstHalfAvg ? "improving" : "declining";
-    const efficiencyChange = ((secondHalfAvg - firstHalfAvg) / firstHalfAvg * 100).toFixed(1);
+    // Predict impact of adding/removing 1 person
+    const addOnePersonSP = spRegression.slope;
+    const addOnePersonEfficiency = efficiencyRegression.slope;
+    
+    // Calculate overall productivity trend (using time as x-axis)
+    const timeIndices = chartData.map((_, i) => i);
+    const productivityTrendRegression = linearRegression(timeIndices, spPerPersonValues);
+    
+    // Determine if team should grow based on efficiency trend
+    const shouldGrow = efficiencyRegression.slope >= 0; // If adding people maintains/improves efficiency
+    const correlationStrength = spRegression.rSquared;
+    
+    // Calculate trend direction (threshold at ±5% to avoid false "stable" classification)
+    const productivityTrend = productivityTrendRegression.slope > 0.05 ? "improving" : 
+                             productivityTrendRegression.slope < -0.05 ? "declining" : "stable";
     
     return {
-      spGrowth,
-      spGrowthPercent,
-      teamGrowth,
-      teamGrowthPercent,
+      // Statistical predictions
+      addOnePersonSP: addOnePersonSP.toFixed(1),
+      removeOnePersonSP: (-addOnePersonSP).toFixed(1),
+      addOnePersonEfficiency: addOnePersonEfficiency.toFixed(2),
+      
+      // Averages
+      avgTeamSize: avgTeamSize.toFixed(1),
+      avgSP: avgSP.toFixed(0),
       avgSPPerPerson: avgSPPerPerson.toFixed(1),
-      efficiencyTrend,
-      efficiencyChange,
+      
+      // Correlation & confidence
+      correlationStrength: (correlationStrength * 100).toFixed(0),
+      rSquared: correlationStrength.toFixed(2),
+      
+      // Recommendations
+      shouldGrow,
+      productivityTrend,
+      productivitySlope: (productivityTrendRegression.slope * 100).toFixed(1),
+      
+      // Efficiency metrics
+      efficiencySlope: efficiencyRegression.slope.toFixed(2),
     };
   }, [chartData]);
   
@@ -221,68 +267,165 @@ export const TeamEfficiency = ({
             </Badge>
           </div>
           
-          {/* Key Insights */}
+          {/* Key Insights - Statistical Analysis */}
           {insights && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
+              {/* Impact of Adding 1 Person */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.1 }}
-                className="p-3 rounded-lg bg-gradient-to-br from-blue-500/10 to-blue-500/5 border border-blue-500/20"
+                className={`p-3 rounded-lg bg-gradient-to-br border ${
+                  parseFloat(insights.addOnePersonSP) > 0
+                    ? "from-emerald-500/10 to-emerald-500/5 border-emerald-500/20"
+                    : "from-orange-500/10 to-orange-500/5 border-orange-500/20"
+                }`}
               >
-                <div className="text-xs text-muted-foreground mb-1">SP Growth</div>
-                <div className="text-lg font-bold text-blue-600 dark:text-blue-400">
-                  {insights.spGrowth > 0 ? '+' : ''}{insights.spGrowth}
-                  <span className="text-sm ml-1">({insights.spGrowthPercent}%)</span>
-                </div>
+                <TooltipProvider>
+                  <UITooltip>
+                    <TooltipTrigger asChild>
+                      <div className="cursor-help">
+                        <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                          Add 1 Person
+                          <Info className="h-3 w-3" />
+                        </div>
+                        <div className={`text-lg font-bold ${
+                          parseFloat(insights.addOnePersonSP) > 0
+                            ? "text-emerald-600 dark:text-emerald-400"
+                            : "text-orange-600 dark:text-orange-400"
+                        }`}>
+                          {parseFloat(insights.addOnePersonSP) > 0 ? '+' : ''}{insights.addOnePersonSP} SP
+                          <div className="text-xs font-normal mt-1">
+                            {parseFloat(insights.addOnePersonEfficiency) >= 0 ? '↗' : '↘'} {insights.addOnePersonEfficiency} SP/person
+                          </div>
+                        </div>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p>Based on statistical analysis of all periods, adding 1 team member is predicted to change total SP by {insights.addOnePersonSP} and individual productivity by {insights.addOnePersonEfficiency} SP/person.</p>
+                    </TooltipContent>
+                  </UITooltip>
+                </TooltipProvider>
               </motion.div>
               
+              {/* Current Performance */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.2 }}
-                className="p-3 rounded-lg bg-gradient-to-br from-purple-500/10 to-purple-500/5 border border-purple-500/20"
+                className="p-3 rounded-lg bg-gradient-to-br from-blue-500/10 to-blue-500/5 border border-blue-500/20"
               >
-                <div className="text-xs text-muted-foreground mb-1">Team Growth</div>
-                <div className="text-lg font-bold text-purple-600 dark:text-purple-400">
-                  {insights.teamGrowth > 0 ? '+' : ''}{insights.teamGrowth}
-                  <span className="text-sm ml-1">({insights.teamGrowthPercent}%)</span>
-                </div>
+                <TooltipProvider>
+                  <UITooltip>
+                    <TooltipTrigger asChild>
+                      <div className="cursor-help">
+                        <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                          Avg Performance
+                          <Info className="h-3 w-3" />
+                        </div>
+                        <div className="text-lg font-bold text-blue-600 dark:text-blue-400">
+                          {insights.avgSP} SP
+                          <div className="text-xs font-normal mt-1">
+                            {insights.avgTeamSize} people · {insights.avgSPPerPerson} SP/person
+                          </div>
+                        </div>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p>Average across all {chartData.length} periods: {insights.avgSP} story points delivered by {insights.avgTeamSize} team members, averaging {insights.avgSPPerPerson} SP per person.</p>
+                    </TooltipContent>
+                  </UITooltip>
+                </TooltipProvider>
               </motion.div>
               
+              {/* Productivity Trend */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3 }}
-                className="p-3 rounded-lg bg-gradient-to-br from-green-500/10 to-green-500/5 border border-green-500/20"
+                className={`p-3 rounded-lg bg-gradient-to-br border ${
+                  insights.productivityTrend === "improving"
+                    ? "from-green-500/10 to-green-500/5 border-green-500/20"
+                    : insights.productivityTrend === "declining"
+                    ? "from-red-500/10 to-red-500/5 border-red-500/20"
+                    : "from-gray-500/10 to-gray-500/5 border-gray-500/20"
+                }`}
               >
-                <div className="text-xs text-muted-foreground mb-1">Avg SP/Person</div>
-                <div className="text-lg font-bold text-green-600 dark:text-green-400">
-                  {insights.avgSPPerPerson}
-                </div>
+                <TooltipProvider>
+                  <UITooltip>
+                    <TooltipTrigger asChild>
+                      <div className="cursor-help">
+                        <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                          Productivity Trend
+                          <Info className="h-3 w-3" />
+                        </div>
+                        <div className={`text-lg font-bold ${
+                          insights.productivityTrend === "improving"
+                            ? "text-green-600 dark:text-green-400"
+                            : insights.productivityTrend === "declining"
+                            ? "text-red-600 dark:text-red-400"
+                            : "text-gray-600 dark:text-gray-400"
+                        }`}>
+                          <TrendingUp className={`h-4 w-4 inline mr-1 ${
+                            insights.productivityTrend === "declining" ? "rotate-180" : 
+                            insights.productivityTrend === "stable" ? "rotate-90" : ""
+                          }`} />
+                          {insights.productivityTrend}
+                          <div className="text-xs font-normal mt-1 capitalize">
+                            {parseFloat(insights.productivitySlope) > 0 ? '+' : ''}{insights.productivitySlope}% over time
+                          </div>
+                        </div>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p>Individual productivity (SP/person) is {insights.productivityTrend} over time with a {insights.productivitySlope}% change rate. This trend considers all {chartData.length} periods.</p>
+                    </TooltipContent>
+                  </UITooltip>
+                </TooltipProvider>
               </motion.div>
               
+              {/* Recommendation */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.4 }}
                 className={`p-3 rounded-lg bg-gradient-to-br border ${
-                  insights.efficiencyTrend === "improving"
-                    ? "from-emerald-500/10 to-emerald-500/5 border-emerald-500/20"
-                    : "from-orange-500/10 to-orange-500/5 border-orange-500/20"
+                  insights.shouldGrow
+                    ? "from-purple-500/10 to-purple-500/5 border-purple-500/20"
+                    : "from-amber-500/10 to-amber-500/5 border-amber-500/20"
                 }`}
               >
-                <div className="text-xs text-muted-foreground mb-1">Efficiency Trend</div>
-                <div className={`text-lg font-bold ${
-                  insights.efficiencyTrend === "improving"
-                    ? "text-emerald-600 dark:text-emerald-400"
-                    : "text-orange-600 dark:text-orange-400"
-                }`}>
-                  <TrendingUp className={`h-4 w-4 inline mr-1 ${
-                    insights.efficiencyTrend === "declining" ? "rotate-180" : ""
-                  }`} />
-                  {insights.efficiencyChange}%
-                </div>
+                <TooltipProvider>
+                  <UITooltip>
+                    <TooltipTrigger asChild>
+                      <div className="cursor-help">
+                        <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                          Scaling Impact
+                          <Info className="h-3 w-3" />
+                        </div>
+                        <div className={`text-sm font-bold ${
+                          insights.shouldGrow
+                            ? "text-purple-600 dark:text-purple-400"
+                            : "text-amber-600 dark:text-amber-400"
+                        }`}>
+                          {insights.shouldGrow ? '✓ Scales Well' : '⚠ Review Scaling'}
+                          <div className="text-xs font-normal mt-1">
+                            Confidence: {insights.correlationStrength}%
+                          </div>
+                        </div>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p>
+                        {insights.shouldGrow
+                          ? `Team scales efficiently. Adding members maintains or improves per-person productivity (${insights.efficiencySlope} SP/person per member).`
+                          : `Adding members may reduce per-person productivity (${insights.efficiencySlope} SP/person per member). Consider process improvements before scaling.`
+                        }
+                        {' '}Data correlation: {insights.correlationStrength}% (R²={insights.rSquared}).
+                      </p>
+                    </TooltipContent>
+                  </UITooltip>
+                </TooltipProvider>
               </motion.div>
             </div>
           )}
@@ -445,32 +588,44 @@ export const TeamEfficiency = ({
               <div className="flex items-start gap-2">
                 <div className="w-3 h-3 rounded bg-blue-500 flex-shrink-0 mt-0.5" />
                 <div>
-                  <span className="font-medium text-foreground">Bars (Story Points):</span> Show total delivery per period
+                  <span className="font-medium text-foreground">Bars (Story Points):</span> Total delivery per period across all team members
                 </div>
               </div>
               <div className="flex items-start gap-2">
                 <div className="w-3 h-3 rounded-full bg-purple-500 flex-shrink-0 mt-0.5" />
                 <div>
-                  <span className="font-medium text-foreground">Solid Line (Team Size):</span> Number of active team members
+                  <span className="font-medium text-foreground">Solid Line (Team Size):</span> Number of active contributors in each period
                 </div>
               </div>
               <div className="flex items-start gap-2">
                 <div className="w-8 h-0.5 border-t-2 border-dashed border-green-500 flex-shrink-0 mt-1.5" />
                 <div>
-                  <span className="font-medium text-foreground">Dashed Line (SP/Person):</span> Average productivity per person
+                  <span className="font-medium text-foreground">Dashed Line (SP/Person):</span> Individual productivity = Total SP ÷ Team Size
                 </div>
               </div>
               <div className="flex items-start gap-2">
                 <TrendingUp className="h-3 w-3 text-emerald-500 flex-shrink-0 mt-0.5" />
                 <div>
-                  <span className="font-medium text-foreground">Ideal:</span> SP and SP/Person both trending upward
+                  <span className="font-medium text-foreground">Statistical Analysis:</span> Predictions use linear regression across all {chartData.length} periods
                 </div>
               </div>
             </div>
+            {insights && (
+              <div className="mt-3 pt-3 border-t border-border/50">
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">Recommendation:</span> {
+                    insights.shouldGrow
+                      ? `Team scales efficiently (${insights.efficiencySlope} SP/person per new member). Adding people is recommended if workload demands.`
+                      : `Consider improving team processes before scaling. Current data shows ${insights.efficiencySlope} SP/person change per new member.`
+                  }
+                </p>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
     </motion.div>
   );
 };
+
 

@@ -569,6 +569,7 @@ const Dashboard = () => {
               <DeliverySpeed 
                 tickets={filteredTickets} 
                 selectedFunction={filters.selectedFunction}
+                timePeriod={filters.timePeriod}
               />
             </div>
 
