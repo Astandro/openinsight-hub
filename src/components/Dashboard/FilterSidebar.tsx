@@ -16,18 +16,15 @@ interface FilterSidebarProps {
   onFiltersChange: (filters: Filters) => void;
   projects: string[];
   sprints: string[];
+  functions: FunctionType[];
 }
-
-const FUNCTIONS: FunctionType[] = [
-  "BE", "FE", "QA", "DESIGNER", "PRODUCT", "INFRA",
-  "BUSINESS SUPPORT", "RESEARCHER", "FOUNDRY", "UX WRITER"
-];
 
 export const FilterSidebar = ({
   filters,
   onFiltersChange,
   projects,
   sprints,
+  functions,
 }: FilterSidebarProps) => {
   const handleReset = () => {
     onFiltersChange({
@@ -146,7 +143,7 @@ export const FilterSidebar = ({
                   <RadioGroupItem value="" id="func-all" className="text-primary" />
                   <Label htmlFor="func-all" className="cursor-pointer text-sm font-medium">All Functions</Label>
                 </div>
-                {FUNCTIONS.map((func) => (
+                {functions.map((func) => (
                   <div key={func} className="flex items-center space-x-3 p-2 rounded-lg hover:bg-secondary/20 transition-colors">
                     <RadioGroupItem value={func} id={`func-${func}`} className="text-primary" />
                     <Label htmlFor={`func-${func}`} className="cursor-pointer text-sm">

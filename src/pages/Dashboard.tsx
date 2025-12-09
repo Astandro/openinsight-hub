@@ -279,6 +279,12 @@ const Dashboard = () => {
     if (!tickets || !Array.isArray(tickets)) return [];
     return Array.from(new Set(tickets.map((t) => t.sprintClosed).filter(Boolean)));
   }, [tickets]);
+  
+  const functions = useMemo(() => {
+    if (!tickets || !Array.isArray(tickets)) return [];
+    const uniqueFunctions = Array.from(new Set(tickets.map((t) => t.function).filter(f => f && f !== "#N/A")));
+    return uniqueFunctions.sort() as FunctionType[];
+  }, [tickets]);
 
   const heatmapData: HeatmapDatum[] = useMemo(() => {
     if (!filteredTickets || filteredTickets.length === 0) {
@@ -498,6 +504,7 @@ const Dashboard = () => {
             <FilterSidebar
               projects={projects}
               sprints={sprints}
+              functions={functions}
               filters={filters}
               onFiltersChange={setFilters}
             />

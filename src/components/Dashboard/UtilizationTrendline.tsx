@@ -30,6 +30,7 @@ const getQuarter = (date: Date): string => {
 };
 
 // Helper function to calculate utilization for a set of tickets
+// Returns utilization as a ratio (will be multiplied by 100 for percentage)
 const calculateUtilization = (
   tickets: ParsedTicket[],
   assignee: string,
@@ -37,7 +38,7 @@ const calculateUtilization = (
   functionBaselines: Map<FunctionType, number>
 ): number => {
   const assigneeTickets = tickets.filter(
-    (t) => t.assignee === assignee && t.status === "Closed"
+    (t) => t.assignee === assignee && t.status === "Closed" && t.sprintClosed && t.sprintClosed !== "#N/A"
   );
   
   if (assigneeTickets.length === 0) return 0;
@@ -47,19 +48,23 @@ const calculateUtilization = (
   const baseline = functionBaselines.get(func) || 1;
   
   // Average SP per sprint for this period
-  const sprints = new Set(assigneeTickets.map(t => t.sprintClosed).filter(Boolean));
+  const sprints = new Set(assigneeTickets.map(t => t.sprintClosed).filter(s => s && s !== "#N/A"));
   const avgSprintSP = sprints.size > 0 ? totalSP / sprints.size : 0;
   
-  return (avgSprintSP * multiplier) / baseline;
+  // Calculate utilization with NaN guards
+  const utilization = (avgSprintSP * multiplier) / baseline;
+  
+  return isNaN(utilization) || !isFinite(utilization) ? 0 : utilization;
 };
 
-// Calculate function baseline (90th percentile approach)
+// Calculate function baseline with outlier handling
+// This uses a robust approach that excludes people who are just helping out or recently joined
 const calculateFunctionBaseline = (
   tickets: ParsedTicket[],
   func: FunctionType
 ): number => {
   const funcTickets = tickets.filter(
-    (t) => t.function === func && t.status === "Closed" && t.sprintClosed
+    (t) => t.function === func && t.status === "Closed" && t.sprintClosed && t.sprintClosed !== "#N/A"
   );
   
   if (funcTickets.length === 0) return 1;
@@ -75,25 +80,65 @@ const calculateFunctionBaseline = (
     sprintMap.set(sprint, (sprintMap.get(sprint) || 0) + ticket.storyPoints);
   });
   
-  // Calculate 90th percentile for each assignee
-  const percentile90s: number[] = [];
-  assigneeMap.forEach((sprintMap) => {
-    const sprintTotals = Array.from(sprintMap.values()).sort((a, b) => a - b);
-    if (sprintTotals.length > 0) {
-      const index = Math.floor(sprintTotals.length * 0.9);
-      const p90 = sprintTotals[Math.min(index, sprintTotals.length - 1)];
-      percentile90s.push(p90);
+  // Calculate median SP per sprint for each assignee
+  // Only include assignees with at least 3 sprints to exclude helpers/recent joiners
+  const MIN_SPRINTS_FOR_BASELINE = 3;
+  const medianSPPerSprint: number[] = [];
+  
+  assigneeMap.forEach((sprintMap, assignee) => {
+    const sprintTotals = Array.from(sprintMap.values()).filter(sp => sp > 0);
+    
+    // Only include if they have enough sprints (filters out people just helping out)
+    if (sprintTotals.length >= MIN_SPRINTS_FOR_BASELINE) {
+      // Sort and calculate median
+      const sorted = sprintTotals.sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      const median = sorted.length % 2 === 0
+        ? (sorted[mid - 1] + sorted[mid]) / 2
+        : sorted[mid];
+      
+      if (median > 0) {
+        medianSPPerSprint.push(median);
+      }
     }
   });
   
-  if (percentile90s.length === 0) return 1;
+  if (medianSPPerSprint.length === 0) {
+    // Fallback: if no one has enough sprints, use all available data with 75th percentile
+    const allSprintTotals: number[] = [];
+    assigneeMap.forEach((sprintMap) => {
+      allSprintTotals.push(...Array.from(sprintMap.values()).filter(sp => sp > 0));
+    });
+    
+    if (allSprintTotals.length === 0) return 1;
+    
+    const sorted = allSprintTotals.sort((a, b) => a - b);
+    const p75Index = Math.floor(sorted.length * 0.75);
+    return sorted[Math.min(p75Index, sorted.length - 1)];
+  }
   
-  // Return median of all 90th percentiles
-  const sorted = percentile90s.sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0
-    ? (sorted[mid - 1] + sorted[mid]) / 2
-    : sorted[mid];
+  // Use IQR (Interquartile Range) method to remove outliers
+  const sorted = medianSPPerSprint.sort((a, b) => a - b);
+  const q1Index = Math.floor(sorted.length * 0.25);
+  const q3Index = Math.floor(sorted.length * 0.75);
+  const q1 = sorted[q1Index];
+  const q3 = sorted[q3Index];
+  const iqr = q3 - q1;
+  
+  // Filter out outliers (values outside 1.5 * IQR)
+  const lowerBound = Math.max(0, q1 - 1.5 * iqr);
+  const upperBound = q3 + 1.5 * iqr;
+  const filtered = sorted.filter(val => val >= lowerBound && val <= upperBound);
+  
+  if (filtered.length === 0) return q3; // Fallback to Q3 if all filtered out
+  
+  // Return median of filtered values
+  const mid = Math.floor(filtered.length / 2);
+  const result = filtered.length % 2 === 0
+    ? (filtered[mid - 1] + filtered[mid]) / 2
+    : filtered[mid];
+    
+  return result > 0 ? result : 1;
 };
 
 export const UtilizationTrendline = ({
@@ -115,10 +160,13 @@ export const UtilizationTrendline = ({
     
     if (closedTickets.length === 0) return [];
     
-    // Calculate function baselines
-    const FUNCTIONS: FunctionType[] = ["BE", "FE", "QA", "DESIGNER", "PRODUCT", "INFRA", "BUSINESS SUPPORT", "RESEARCHER", "FOUNDRY", "UX WRITER"];
+    // Calculate function baselines - extract unique functions from actual data
+    const uniqueFunctions = Array.from(new Set(
+      closedTickets.map(t => t.function).filter(f => f && f !== "#N/A")
+    )) as FunctionType[];
+    
     const functionBaselines = new Map<FunctionType, number>();
-    FUNCTIONS.forEach(func => {
+    uniqueFunctions.forEach(func => {
       functionBaselines.set(func, calculateFunctionBaseline(tickets, func));
     });
     
@@ -168,7 +216,8 @@ export const UtilizationTrendline = ({
               selectedFunction,
               functionBaselines
             );
-            dataPoint[assignee] = utilization * 100;
+            const utilizationPercent = utilization * 100;
+            dataPoint[assignee] = isNaN(utilizationPercent) || !isFinite(utilizationPercent) ? 0 : utilizationPercent;
           });
           
           return dataPoint;
@@ -176,7 +225,7 @@ export const UtilizationTrendline = ({
       } else {
         // Show function-level data (average utilization per function)
         // Use all functions that have any data across all quarters
-        const activeFunctions = FUNCTIONS.filter(func => 
+        const activeFunctions = uniqueFunctions.filter(func => 
           closedTickets.some(t => t.function === func)
         );
         
@@ -193,7 +242,8 @@ export const UtilizationTrendline = ({
                 calculateUtilization(funcTickets, assignee, func, functionBaselines)
               );
               const avgUtilization = utilizations.reduce((a, b) => a + b, 0) / utilizations.length;
-              dataPoint[func] = avgUtilization * 100;
+              const utilizationPercent = avgUtilization * 100;
+              dataPoint[func] = isNaN(utilizationPercent) || !isFinite(utilizationPercent) ? 0 : utilizationPercent;
             } else {
               // Set to 0 if no data for this quarter but function exists in other quarters
               dataPoint[func] = 0;
@@ -239,7 +289,8 @@ export const UtilizationTrendline = ({
               selectedFunction,
               functionBaselines
             );
-            dataPoint[assignee] = utilization * 100;
+            const utilizationPercent = utilization * 100;
+            dataPoint[assignee] = isNaN(utilizationPercent) || !isFinite(utilizationPercent) ? 0 : utilizationPercent;
           });
           
           return dataPoint;
@@ -247,7 +298,7 @@ export const UtilizationTrendline = ({
       } else {
         // Show function-level data (average utilization per function)
         // Use all functions that have any data across all sprints
-        const activeFunctions = FUNCTIONS.filter(func => 
+        const activeFunctions = uniqueFunctions.filter(func => 
           closedTickets.some(t => t.function === func)
         );
         
@@ -264,7 +315,8 @@ export const UtilizationTrendline = ({
                 calculateUtilization(funcTickets, assignee, func, functionBaselines)
               );
               const avgUtilization = utilizations.reduce((a, b) => a + b, 0) / utilizations.length;
-              dataPoint[func] = avgUtilization * 100;
+              const utilizationPercent = avgUtilization * 100;
+              dataPoint[func] = isNaN(utilizationPercent) || !isFinite(utilizationPercent) ? 0 : utilizationPercent;
             } else {
               // Set to 0 if no data for this sprint but function exists in other sprints
               dataPoint[func] = 0;

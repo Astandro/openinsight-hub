@@ -6,7 +6,8 @@ const calculateZScore = (values: number[], value: number): number => {
   const mean = values.reduce((a, b) => a + b, 0) / values.length;
   const variance = values.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / values.length;
   const stdDev = Math.sqrt(variance);
-  return stdDev > 0 ? (value - mean) / stdDev : 0;
+  const zScore = stdDev > 0 ? (value - mean) / stdDev : 0;
+  return isNaN(zScore) || !isFinite(zScore) ? 0 : zScore;
 };
 
 // Helper function to calculate active weeks from tickets
@@ -126,15 +127,18 @@ export const calculateAssigneeMetrics = (
 
   const totalClosedStoryPoints = closedTickets.reduce((sum, t) => sum + t.storyPoints, 0);
   
-  const sprintsParticipated = new Set(closedTickets.map(t => t.sprintClosed).filter(Boolean)).size;
+  const sprintsParticipated = new Set(closedTickets.map(t => t.sprintClosed).filter(s => s && s !== "#N/A")).size;
   const velocityPerSprint = sprintsParticipated > 0 ? totalClosedStoryPoints / sprintsParticipated : 0;
+  const safeVelocity = isNaN(velocityPerSprint) || !isFinite(velocityPerSprint) ? 0 : velocityPerSprint;
 
   // Calculate project variety (distinct projects worked on)
   const projectVariety = new Set(closedTickets.map(t => t.project)).size;
   
   // Calculate effective story points (penalized by revise rate)
   const reviseRate = closedTickets.length > 0 ? reviseCountClosed / closedTickets.length : 0;
-  const effectiveStoryPoints = totalClosedStoryPoints * (1 - reviseRate * 0.5);
+  const safeReviseRate = isNaN(reviseRate) || !isFinite(reviseRate) ? 0 : reviseRate;
+  const effectiveStoryPoints = totalClosedStoryPoints * (1 - safeReviseRate * 0.5);
+  const safeEffectiveSP = isNaN(effectiveStoryPoints) || !isFinite(effectiveStoryPoints) ? 0 : effectiveStoryPoints;
   
   // Calculate active weeks
   const activeWeeks = calculateActiveWeeks(closedTickets);
@@ -148,6 +152,9 @@ export const calculateAssigneeMetrics = (
     console.log(`${assignee}: featureCount=${featureCount}, contributions:`, featureContributions.map(f => f.featureName));
   }
 
+  const bugRateClosed = closedTickets.length > 0 ? bugCountClosed / closedTickets.length : 0;
+  const reviseRateClosed = closedTickets.length > 0 ? reviseCountClosed / closedTickets.length : 0;
+  
   return {
     assignee,
     function: assigneeTickets[0]?.function || "BE",
@@ -155,13 +162,13 @@ export const calculateAssigneeMetrics = (
     totalClosedStoryPoints,
     bugCountClosed,
     reviseCountClosed,
-    bugRateClosed: closedTickets.length > 0 ? bugCountClosed / closedTickets.length : 0,
-    reviseRateClosed: closedTickets.length > 0 ? reviseCountClosed / closedTickets.length : 0,
-    avgCycleTimeDays,
+    bugRateClosed: isNaN(bugRateClosed) || !isFinite(bugRateClosed) ? 0 : bugRateClosed,
+    reviseRateClosed: isNaN(reviseRateClosed) || !isFinite(reviseRateClosed) ? 0 : reviseRateClosed,
+    avgCycleTimeDays: isNaN(avgCycleTimeDays) || !isFinite(avgCycleTimeDays) ? 0 : avgCycleTimeDays,
     sprintsParticipated,
-    velocityPerSprint,
+    velocityPerSprint: safeVelocity,
     projectVariety,
-    effectiveStoryPoints,
+    effectiveStoryPoints: safeEffectiveSP,
     activeWeeks,
     featureContributions,
     featureCount,
@@ -199,18 +206,20 @@ const calculateUtilizationIndex = (
   
   // Calculate average SP per sprint
   const sprintTotals = Array.from(sprintMap.values());
-  const avgSprintSP = sprintTotals.reduce((a, b) => a + b, 0) / sprintTotals.length;
+  const avgSprintSP = sprintTotals.length > 0 
+    ? sprintTotals.reduce((a, b) => a + b, 0) / sprintTotals.length 
+    : 0;
   
   // Get the assignee's multiplier (use first ticket's multiplier)
   const multiplier = assigneeTickets[0]?.multiplier || 1.0;
   
   // Calculate utilization: (Average Sprint SP × Multiplier) / Function Baseline × 100%
-  if (functionBaseline === 0) return 0;
+  if (functionBaseline === 0 || isNaN(functionBaseline) || !isFinite(functionBaseline)) return 0;
   
   const utilization = (avgSprintSP * multiplier) / functionBaseline;
   
-  // Return as percentage (can exceed 100% for over-utilized)
-  return utilization;
+  // Return as percentage (can exceed 100% for over-utilized), guard against NaN
+  return isNaN(utilization) || !isFinite(utilization) ? 0 : utilization;
 };
 
 /**

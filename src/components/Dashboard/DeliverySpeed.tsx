@@ -111,12 +111,17 @@ export const DeliverySpeed = ({
         const cleanedVelocities = removeOutliers(sprintVelocities);
         
         // Calculate average SP per sprint
-        const avgSPPerSprint = cleanedVelocities.reduce((sum, sp) => sum + sp, 0) / cleanedVelocities.length;
+        const avgSPPerSprint = cleanedVelocities.length > 0 
+          ? cleanedVelocities.reduce((sum, sp) => sum + sp, 0) / cleanedVelocities.length 
+          : 0;
         
         // Convert to days per 5 SP
         // Assumption: 1 sprint = 10 working days (2 weeks, 5 days/week)
         const spPerWorkingDay = avgSPPerSprint / 10;
         const daysPer5SP = spPerWorkingDay > 0 ? 5 / spPerWorkingDay : 0;
+        
+        // Guard against NaN and Infinity
+        const safeDaysPer5SP = isNaN(daysPer5SP) || !isFinite(daysPer5SP) ? 0 : daysPer5SP;
         
         // Calculate totals for display
         const totalSP = sprintVelocities.reduce((sum, sp) => sum + sp, 0);
@@ -124,7 +129,7 @@ export const DeliverySpeed = ({
         
         result.push({
           name: assignee,
-          daysPerSP: parseFloat(daysPer5SP.toFixed(1)),
+          daysPerSP: parseFloat(safeDaysPer5SP.toFixed(1)),
           totalSP: totalSP,
           totalDays: totalSprints * 10, // sprints × 10 working days
           ticketCount: totalSprints, // Show sprint count instead of ticket count
@@ -189,15 +194,20 @@ export const DeliverySpeed = ({
         const cleanedVelocities = removeOutliers(allSprintVelocities);
         
         // Calculate average SP per sprint across all people in function
-        const avgSPPerSprint = cleanedVelocities.reduce((sum, sp) => sum + sp, 0) / cleanedVelocities.length;
+        const avgSPPerSprint = cleanedVelocities.length > 0
+          ? cleanedVelocities.reduce((sum, sp) => sum + sp, 0) / cleanedVelocities.length
+          : 0;
         
         // Convert to days per 5 SP
         const spPerWorkingDay = avgSPPerSprint / 10;
         const daysPer5SP = spPerWorkingDay > 0 ? 5 / spPerWorkingDay : 0;
         
+        // Guard against NaN and Infinity
+        const safeDaysPer5SP = isNaN(daysPer5SP) || !isFinite(daysPer5SP) ? 0 : daysPer5SP;
+        
         result.push({
           name: func,
-          daysPerSP: parseFloat(daysPer5SP.toFixed(1)),
+          daysPerSP: parseFloat(safeDaysPer5SP.toFixed(1)),
           totalSP: totalSP,
           totalDays: totalSprints * 10,
           ticketCount: totalSprints,
@@ -260,20 +270,22 @@ export const DeliverySpeed = ({
     const sumXY = timeIndices.reduce((sum, xi, i) => sum + xi * daysPerSPValues[i], 0);
     const sumXX = timeIndices.reduce((sum, xi) => sum + xi * xi, 0);
     
-    const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
-    const avgSpeed = sumY / n;
+    const denominator = n * sumXX - sumX * sumX;
+    const slope = denominator !== 0 ? (n * sumXY - sumX * sumY) / denominator : 0;
+    const avgSpeed = n > 0 ? sumY / n : 0;
     
-    // Calculate percentage change
+    // Calculate percentage change with NaN guard
     const percentChange = avgSpeed > 0 ? (slope / avgSpeed) * 100 * n : 0;
+    const safePercentChange = isNaN(percentChange) || !isFinite(percentChange) ? 0 : percentChange;
     
     // Determine trend (negative slope = getting faster, positive = getting slower)
     const trend = slope < -0.5 ? "improving" : slope > 0.5 ? "declining" : "stable";
     
     return {
       trend,
-      percentChange: percentChange.toFixed(1),
-      slope: slope.toFixed(2),
-      avgSpeed: avgSpeed.toFixed(1),
+      percentChange: safePercentChange.toFixed(1),
+      slope: (isNaN(slope) || !isFinite(slope) ? 0 : slope).toFixed(2),
+      avgSpeed: (isNaN(avgSpeed) || !isFinite(avgSpeed) ? 0 : avgSpeed).toFixed(1),
       sprintCount: n,
     };
   }, [tickets, selectedFunction]);
@@ -284,19 +296,22 @@ export const DeliverySpeed = ({
     
     const fastest = speedData[0];
     const slowest = speedData[speedData.length - 1];
-    const avgSpeed = speedData.reduce((sum, d) => sum + d.daysPerSP, 0) / speedData.length;
+    const avgSpeed = speedData.length > 0 
+      ? speedData.reduce((sum, d) => sum + d.daysPerSP, 0) / speedData.length 
+      : 0;
     const speedVariation = slowest.daysPerSP - fastest.daysPerSP;
     
     // Calculate if variation is high (>50% difference from average)
-    const variationPercent = (speedVariation / avgSpeed) * 100;
-    const isHighVariation = variationPercent > 50;
+    const variationPercent = avgSpeed > 0 ? (speedVariation / avgSpeed) * 100 : 0;
+    const safeVariationPercent = isNaN(variationPercent) || !isFinite(variationPercent) ? 0 : variationPercent;
+    const isHighVariation = safeVariationPercent > 50;
     
     return {
       fastest,
       slowest,
-      avgSpeed: avgSpeed.toFixed(1),
-      speedVariation: speedVariation.toFixed(1),
-      variationPercent: variationPercent.toFixed(0),
+      avgSpeed: (isNaN(avgSpeed) || !isFinite(avgSpeed) ? 0 : avgSpeed).toFixed(1),
+      speedVariation: (isNaN(speedVariation) || !isFinite(speedVariation) ? 0 : speedVariation).toFixed(1),
+      variationPercent: safeVariationPercent.toFixed(0),
       isHighVariation,
       speedTrend,
     };

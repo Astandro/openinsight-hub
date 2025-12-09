@@ -177,8 +177,12 @@ export const FunctionPerformance = ({ tickets, selectedFunction, selectedProject
                   padding: "12px",
                   boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
                 }}
-                formatter={(value: number) => [`${value} SP`, '']}
+                formatter={(value: number, name: string) => [`${value} SP`, name]}
                 cursor={{ fill: 'hsl(var(--muted))', opacity: 0.1 }}
+              />
+              <Legend 
+                wrapperStyle={{ paddingTop: "20px" }}
+                iconType="square"
               />
               <Bar 
                 dataKey="User Story" 

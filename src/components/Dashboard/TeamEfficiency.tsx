@@ -85,7 +85,7 @@ export const TeamEfficiency = ({
           period: quarter,
           storyPoints: totalSP,
           teamSize: teamSize,
-          spPerPerson: parseFloat(spPerPerson.toFixed(1)),
+          spPerPerson: isNaN(spPerPerson) || !isFinite(spPerPerson) ? 0 : parseFloat(spPerPerson.toFixed(1)),
         };
       });
     } else {
@@ -116,7 +116,7 @@ export const TeamEfficiency = ({
           period: sprint,
           storyPoints: totalSP,
           teamSize: teamSize,
-          spPerPerson: parseFloat(spPerPerson.toFixed(1)),
+          spPerPerson: isNaN(spPerPerson) || !isFinite(spPerPerson) ? 0 : parseFloat(spPerPerson.toFixed(1)),
         };
       });
     }
@@ -136,25 +136,32 @@ export const TeamEfficiency = ({
     // Helper: Calculate linear regression
     const linearRegression = (x: number[], y: number[]) => {
       const n = x.length;
+      if (n === 0) return { slope: 0, intercept: 0, rSquared: 0 };
+      
       const sumX = x.reduce((a, b) => a + b, 0);
       const sumY = y.reduce((a, b) => a + b, 0);
       const sumXY = x.reduce((sum, xi, i) => sum + xi * y[i], 0);
       const sumXX = x.reduce((sum, xi) => sum + xi * xi, 0);
       const sumYY = y.reduce((sum, yi) => sum + yi * yi, 0);
       
-      const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
-      const intercept = (sumY - slope * sumX) / n;
+      const denominator = n * sumXX - sumX * sumX;
+      const slope = denominator !== 0 ? (n * sumXY - sumX * sumY) / denominator : 0;
+      const intercept = n !== 0 ? (sumY - slope * sumX) / n : 0;
       
       // Calculate R² (coefficient of determination)
-      const meanY = sumY / n;
+      const meanY = n !== 0 ? sumY / n : 0;
       const ssTotal = sumYY - n * meanY * meanY;
       const ssResidual = y.reduce((sum, yi, i) => {
         const predicted = slope * x[i] + intercept;
         return sum + Math.pow(yi - predicted, 2);
       }, 0);
-      const rSquared = 1 - (ssResidual / ssTotal);
+      const rSquared = ssTotal !== 0 ? 1 - (ssResidual / ssTotal) : 0;
       
-      return { slope, intercept, rSquared: Math.max(0, Math.min(1, rSquared)) };
+      return { 
+        slope: isNaN(slope) || !isFinite(slope) ? 0 : slope, 
+        intercept: isNaN(intercept) || !isFinite(intercept) ? 0 : intercept, 
+        rSquared: isNaN(rSquared) || !isFinite(rSquared) ? 0 : Math.max(0, Math.min(1, rSquared)) 
+      };
     };
     
     // Regression: Team Size vs Story Points
@@ -184,28 +191,34 @@ export const TeamEfficiency = ({
     const productivityTrend = productivityTrendRegression.slope > 0.05 ? "improving" : 
                              productivityTrendRegression.slope < -0.05 ? "declining" : "stable";
     
+    // Safe number formatting helper
+    const safeFormat = (value: number, decimals: number = 1): string => {
+      if (isNaN(value) || !isFinite(value)) return "0";
+      return value.toFixed(decimals);
+    };
+    
     return {
       // Statistical predictions
-      addOnePersonSP: addOnePersonSP.toFixed(1),
-      removeOnePersonSP: (-addOnePersonSP).toFixed(1),
-      addOnePersonEfficiency: addOnePersonEfficiency.toFixed(2),
+      addOnePersonSP: safeFormat(addOnePersonSP, 1),
+      removeOnePersonSP: safeFormat(-addOnePersonSP, 1),
+      addOnePersonEfficiency: safeFormat(addOnePersonEfficiency, 2),
       
       // Averages
-      avgTeamSize: avgTeamSize.toFixed(1),
-      avgSP: avgSP.toFixed(0),
-      avgSPPerPerson: avgSPPerPerson.toFixed(1),
+      avgTeamSize: safeFormat(avgTeamSize, 1),
+      avgSP: safeFormat(avgSP, 0),
+      avgSPPerPerson: safeFormat(avgSPPerPerson, 1),
       
       // Correlation & confidence
-      correlationStrength: (correlationStrength * 100).toFixed(0),
-      rSquared: correlationStrength.toFixed(2),
+      correlationStrength: safeFormat(correlationStrength * 100, 0),
+      rSquared: safeFormat(correlationStrength, 2),
       
       // Recommendations
       shouldGrow,
       productivityTrend,
-      productivitySlope: (productivityTrendRegression.slope * 100).toFixed(1),
+      productivitySlope: safeFormat(productivityTrendRegression.slope * 100, 1),
       
       // Efficiency metrics
-      efficiencySlope: efficiencyRegression.slope.toFixed(2),
+      efficiencySlope: safeFormat(efficiencyRegression.slope, 2),
     };
   }, [chartData]);
   
