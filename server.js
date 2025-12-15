@@ -17,6 +17,8 @@ app.use(express.json({ limit: '50mb' }));
 let storedData = [];
 let storedFilters = null;
 let storedThresholds = null;
+let storedMultipliers = []; // Multiplier database (Name, Position, Formula)
+let storedSprintConfigs = []; // Sprint configurations for date-based sprint calculation
 
 // Authentication configuration
 const AUTH_CONFIG = {
@@ -138,6 +140,8 @@ app.get('/api/data', (req, res) => {
       tickets: storedData,
       filters: storedFilters,
       thresholds: storedThresholds,
+      multipliers: storedMultipliers,
+      sprintConfigs: storedSprintConfigs,
       count: storedData.length
     });
   } catch (error) {
@@ -147,7 +151,7 @@ app.get('/api/data', (req, res) => {
 
 app.post('/api/data', requireAuth, (req, res) => {
   try {
-    const { tickets, filters, thresholds } = req.body;
+    const { tickets, filters, thresholds, multipliers, sprintConfigs } = req.body;
     
     if (tickets && Array.isArray(tickets)) {
       storedData = tickets;
@@ -161,9 +165,19 @@ app.post('/api/data', requireAuth, (req, res) => {
       storedThresholds = thresholds;
     }
     
+    if (multipliers && Array.isArray(multipliers)) {
+      storedMultipliers = multipliers;
+    }
+    
+    if (sprintConfigs && Array.isArray(sprintConfigs)) {
+      storedSprintConfigs = sprintConfigs;
+    }
+    
     res.status(200).json({ 
       message: 'Data stored successfully', 
-      count: storedData.length 
+      count: storedData.length,
+      multipliersCount: storedMultipliers.length,
+      sprintConfigsCount: storedSprintConfigs.length
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to store data' });
@@ -175,6 +189,8 @@ app.delete('/api/data', requireAuth, (req, res) => {
     storedData = [];
     storedFilters = null;
     storedThresholds = null;
+    storedMultipliers = [];
+    storedSprintConfigs = [];
     res.status(200).json({ message: 'Data cleared successfully' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to clear data' });

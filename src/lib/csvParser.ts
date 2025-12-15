@@ -1,13 +1,19 @@
 import Papa from "papaparse";
-import { CSVRow, ParsedTicket } from "@/types/openproject";
+import { CSVRow, ParsedTicket, MultiplierEntry, SprintConfig, FunctionType } from "@/types/openproject";
+import { getMultiplierEntryByName } from "./multiplierManager";
+import { usesDateBasedSprints, calculateSprintRange, parseDate } from "./sprintCalculator";
 
-export const parseCSV = (csvText: string): ParsedTicket[] => {
+export const parseCSV = (
+  csvText: string,
+  multiplierDB: MultiplierEntry[] = [],
+  sprintConfigs: SprintConfig[] = []
+): ParsedTicket[] => {
   const results = Papa.parse<CSVRow>(csvText, {
     header: true,
     skipEmptyLines: true,
   });
   
-  const tickets = results.data.map((row) => parseRow(row));
+  const tickets = results.data.map((row) => parseRow(row, multiplierDB, sprintConfigs));
   return tickets.filter((t) => t !== null) as ParsedTicket[];
 };
 
@@ -22,24 +28,47 @@ const normalizeType = (type: string): "Feature" | "Bug" | "Regression" | "Improv
   return "Other";
 };
 
-const parseRow = (row: CSVRow): ParsedTicket | null => {
+const parseRow = (
+  row: CSVRow,
+  multiplierDB: MultiplierEntry[] = [],
+  sprintConfigs: SprintConfig[] = []
+): ParsedTicket | null => {
   try {
     const storyPoints = parseInt(row["Story Points"] || "0", 10) || 0;
     const createdDate = new Date(row["Created At"]);
     const closedDate = row["Updated At"] ? new Date(row["Updated At"]) : null;
+    const project = row.Project || "Unknown";
+    const assigneeName = row.Assignee || "Unassigned";
+    
+    // Parse start date and due date for date-based sprint calculation
+    const startDate = parseDate(row["Start Date"]);
+    const dueDate = parseDate(row["Due Date"] || row["Finish Date"] || row["End Date"]);
+    
+    // Determine sprint assignment method based on project
+    let sprintCreated: string;
+    let sprintClosed: string;
+    
+    if (usesDateBasedSprints(project) && (startDate || dueDate || closedDate)) {
+      // Use date-based sprint calculation for Orion, Threat Intel, and Aman
+      // Pass closedDate for +1 day tolerance
+      const sprints = calculateSprintRange(startDate, dueDate, closedDate, project, sprintConfigs);
+      sprintCreated = sprints.sprintCreated;
+      sprintClosed = sprints.sprintClosed;
+    } else {
+      // Use original CSV sprint values for other projects
+      sprintCreated = row["Sprint Created"] || "#N/A";
+      sprintClosed = row["Sprint Closed"] || "#N/A";
+    }
     
     // Calculate cycle days using multiple methods and pick the shortest (most optimistic)
     // This prevents inflated cycle times from parked/blocked tickets
     const cycleDaysOptions: number[] = [];
     
     // Method 1: Start Date (if exists) to Updated At
-    if (closedDate && row["Start Date"]) {
-      const startDate = new Date(row["Start Date"]);
-      if (!isNaN(startDate.getTime())) {
-        const daysFromStart = Math.round((closedDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-        if (daysFromStart >= 1 && daysFromStart <= 180) {
-          cycleDaysOptions.push(daysFromStart);
-        }
+    if (closedDate && startDate) {
+      const daysFromStart = Math.round((closedDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+      if (daysFromStart >= 1 && daysFromStart <= 180) {
+        cycleDaysOptions.push(daysFromStart);
       }
     }
     
@@ -52,9 +81,6 @@ const parseRow = (row: CSVRow): ParsedTicket | null => {
     }
     
     // Method 3: Sprint Created to Sprint Closed (sprint-based calculation)
-    const sprintCreated = row["Sprint Created"];
-    const sprintClosed = row["Sprint Closed"];
-    
     if (sprintClosed && sprintClosed !== "#N/A" && sprintCreated && sprintCreated !== "#N/A") {
       // Extract sprint numbers (e.g., "Sprint 16" -> 16)
       const sprintClosedNum = parseInt(sprintClosed.replace(/\D/g, ""), 10);
@@ -114,20 +140,45 @@ const parseRow = (row: CSVRow): ParsedTicket | null => {
       }
     }
 
-    // Parse multiplier (default to 1.0 if not provided)
-    const multiplier = row.Multiplier ? parseFloat(row.Multiplier) : 1.0;
+    // Get function AND multiplier from database
+    // Priority: 1. Multiplier Database, 2. CSV columns, 3. Skip (warn user)
+    let personFunction: FunctionType | undefined;
+    let multiplier = 1.0;
+    
+    // Try to find person in multiplier database first
+    const multiplierEntry = multiplierDB.length > 0 
+      ? getMultiplierEntryByName(assigneeName, multiplierDB)
+      : null;
+    
+    if (multiplierEntry) {
+      // Found in database - use database values
+      personFunction = multiplierEntry.position;
+      multiplier = multiplierEntry.formula;
+    } else if (row.Function) {
+      // Not in database but has Function in CSV - use that as fallback
+      personFunction = row.Function;
+      multiplier = row.Multiplier ? parseFloat(row.Multiplier) : 1.0;
+    } else {
+      // Not in database AND no Function in CSV - this person is not properly configured
+      // Skip this ticket or log warning
+      if (multiplierDB.length > 0) {
+        // Only warn if multiplier DB exists but person not found
+        console.warn(`⚠️ "${assigneeName}" not found in multiplier database and no Function in CSV. Skipping ticket.`);
+      }
+      return null; // Skip this ticket
+    }
 
     const ticket = {
       id,
       title,
-      assignee: row.Assignee || "Unassigned",
-      function: row.Function,
+      assignee: assigneeName,
+      function: personFunction, // Use looked-up or fallback function
       status: row.Status,
       storyPoints,
       type,
       normalizedType,
-      project: row.Project || "Unknown",
-      sprintClosed: row["Sprint Closed"] || "",
+      project,
+      sprintClosed, // Use calculated sprint (date-based or CSV-based)
       createdDate,
       closedDate,
       subject,
@@ -137,18 +188,6 @@ const parseRow = (row: CSVRow): ParsedTicket | null => {
       parentId, // Use the parentId we calculated above
       multiplier: isNaN(multiplier) ? 1.0 : multiplier, // Ensure valid number
     };
-    
-    // Debug logging for first few tickets
-    if (Math.random() < 0.05) { // Log ~5% of tickets
-      console.log('Parsed ticket:', {
-        id: ticket.id,
-        type: ticket.type,
-        normalizedType: ticket.normalizedType,
-        parentId: ticket.parentId,
-        assignee: ticket.assignee,
-        function: ticket.function
-      });
-    }
     
     return ticket;
   } catch (error) {

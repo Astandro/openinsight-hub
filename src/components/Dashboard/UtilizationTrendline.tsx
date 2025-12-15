@@ -2,7 +2,8 @@ import React, { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, Eye, EyeOff } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { TrendingUp, Users, Info, BarChart3, User } from "lucide-react";
 import { ParsedTicket, FunctionType } from "@/types/openproject";
 import {
   LineChart,
@@ -19,307 +20,353 @@ interface UtilizationTrendlineProps {
   tickets: ParsedTicket[];
   selectedFunction: FunctionType | null;
   timePeriod: string;
+  multipliers?: Array<{ name: string; capacity?: number; metric?: "sp" | "ticket" }>;
+  allTickets: ParsedTicket[];
 }
 
-// Helper function to get quarter from date
-const getQuarter = (date: Date): string => {
-  const month = date.getMonth();
-  const year = date.getFullYear();
-  const quarter = Math.floor(month / 3) + 1;
-  return `Q${quarter} ${year}`;
-};
-
-// Helper function to calculate utilization for a set of tickets
-// Returns utilization as a ratio (will be multiplied by 100 for percentage)
-const calculateUtilization = (
-  tickets: ParsedTicket[],
-  assignee: string,
-  func: FunctionType,
-  functionBaselines: Map<FunctionType, number>
+// Helper: Calculate utilization for one person
+const calculatePersonUtilization = (
+  personTickets: ParsedTicket[],
+  allPersonTickets: ParsedTicket[],
+  multiplierEntry?: { capacity?: number; metric?: "sp" | "ticket" }
 ): number => {
-  const assigneeTickets = tickets.filter(
-    (t) => t.assignee === assignee && t.status === "Closed" && t.sprintClosed && t.sprintClosed !== "#N/A"
-  );
+  if (personTickets.length === 0) return 0;
   
-  if (assigneeTickets.length === 0) return 0;
+  const metric = multiplierEntry?.metric || "sp";
   
-  const totalSP = assigneeTickets.reduce((sum, t) => sum + t.storyPoints, 0);
-  const multiplier = assigneeTickets[0]?.multiplier || 1.0;
-  const baseline = functionBaselines.get(func) || 1;
-  
-  // Average SP per sprint for this period
-  const sprints = new Set(assigneeTickets.map(t => t.sprintClosed).filter(s => s && s !== "#N/A"));
-  const avgSprintSP = sprints.size > 0 ? totalSP / sprints.size : 0;
-  
-  // Calculate utilization with NaN guards
-  const utilization = (avgSprintSP * multiplier) / baseline;
-  
-  return isNaN(utilization) || !isFinite(utilization) ? 0 : utilization;
-};
-
-// Calculate function baseline with outlier handling
-// This uses a robust approach that excludes people who are just helping out or recently joined
-const calculateFunctionBaseline = (
-  tickets: ParsedTicket[],
-  func: FunctionType
-): number => {
-  const funcTickets = tickets.filter(
-    (t) => t.function === func && t.status === "Closed" && t.sprintClosed && t.sprintClosed !== "#N/A"
-  );
-  
-  if (funcTickets.length === 0) return 1;
-  
-  // Group by assignee and sprint
-  const assigneeMap = new Map<string, Map<string, number>>();
-  funcTickets.forEach(ticket => {
-    if (!assigneeMap.has(ticket.assignee)) {
-      assigneeMap.set(ticket.assignee, new Map());
-    }
-    const sprintMap = assigneeMap.get(ticket.assignee)!;
+  // Group by sprint
+  const sprintMap = new Map<string, { sp: number; tickets: number }>();
+  personTickets.forEach(ticket => {
     const sprint = ticket.sprintClosed;
-    sprintMap.set(sprint, (sprintMap.get(sprint) || 0) + ticket.storyPoints);
-  });
-  
-  // Calculate median SP per sprint for each assignee
-  // Only include assignees with at least 3 sprints to exclude helpers/recent joiners
-  const MIN_SPRINTS_FOR_BASELINE = 3;
-  const medianSPPerSprint: number[] = [];
-  
-  assigneeMap.forEach((sprintMap, assignee) => {
-    const sprintTotals = Array.from(sprintMap.values()).filter(sp => sp > 0);
-    
-    // Only include if they have enough sprints (filters out people just helping out)
-    if (sprintTotals.length >= MIN_SPRINTS_FOR_BASELINE) {
-      // Sort and calculate median
-      const sorted = sprintTotals.sort((a, b) => a - b);
-      const mid = Math.floor(sorted.length / 2);
-      const median = sorted.length % 2 === 0
-        ? (sorted[mid - 1] + sorted[mid]) / 2
-        : sorted[mid];
-      
-      if (median > 0) {
-        medianSPPerSprint.push(median);
-      }
+    if (sprint && sprint !== "#N/A") {
+      const current = sprintMap.get(sprint) || { sp: 0, tickets: 0 };
+      sprintMap.set(sprint, {
+        sp: current.sp + ticket.storyPoints,
+        tickets: current.tickets + 1
+      });
     }
   });
   
-  if (medianSPPerSprint.length === 0) {
-    // Fallback: if no one has enough sprints, use all available data with 75th percentile
-    const allSprintTotals: number[] = [];
-    assigneeMap.forEach((sprintMap) => {
-      allSprintTotals.push(...Array.from(sprintMap.values()).filter(sp => sp > 0));
+  if (sprintMap.size === 0) return 0;
+  
+  // Calculate average workload
+  const sprintWorkloads = Array.from(sprintMap.values()).map(entry => 
+    metric === "sp" ? entry.sp : entry.tickets
+  ).filter(w => w > 0);
+  
+  if (sprintWorkloads.length === 0) return 0;
+  
+  const avgWorkload = sprintWorkloads.reduce((a, b) => a + b, 0) / sprintWorkloads.length;
+  
+  // Get capacity (from config or historical peak)
+  let capacity: number;
+  
+  if (multiplierEntry?.capacity && multiplierEntry.capacity > 0) {
+    capacity = multiplierEntry.capacity;
+  } else {
+    // Calculate historical peak capacity
+    const historicalSprintMap = new Map<string, { sp: number; tickets: number }>();
+    allPersonTickets.forEach(ticket => {
+      const sprint = ticket.sprintClosed;
+      if (sprint && sprint !== "#N/A") {
+        const current = historicalSprintMap.get(sprint) || { sp: 0, tickets: 0 };
+        historicalSprintMap.set(sprint, {
+          sp: current.sp + ticket.storyPoints,
+          tickets: current.tickets + 1
+        });
+      }
     });
     
-    if (allSprintTotals.length === 0) return 1;
+    const historicalWorkloads = Array.from(historicalSprintMap.values())
+      .map(entry => metric === "sp" ? entry.sp : entry.tickets)
+      .filter(w => w > 0)
+      .sort((a, b) => b - a);
     
-    const sorted = allSprintTotals.sort((a, b) => a - b);
-    const p75Index = Math.floor(sorted.length * 0.75);
-    return sorted[Math.min(p75Index, sorted.length - 1)];
+    if (historicalWorkloads.length === 0) return 0;
+    
+    // Use 95th percentile, max, or average based on data points
+    if (historicalWorkloads.length >= 5) {
+      const percentile95Index = Math.floor(historicalWorkloads.length * 0.05);
+      capacity = historicalWorkloads[percentile95Index];
+    } else if (historicalWorkloads.length >= 3) {
+      capacity = historicalWorkloads[0]; // max
+    } else {
+      capacity = historicalWorkloads.reduce((a, b) => a + b, 0) / historicalWorkloads.length * 1.3;
+    }
   }
   
-  // Use IQR (Interquartile Range) method to remove outliers
-  const sorted = medianSPPerSprint.sort((a, b) => a - b);
-  const q1Index = Math.floor(sorted.length * 0.25);
-  const q3Index = Math.floor(sorted.length * 0.75);
-  const q1 = sorted[q1Index];
-  const q3 = sorted[q3Index];
-  const iqr = q3 - q1;
+  if (capacity === 0) return 0;
   
-  // Filter out outliers (values outside 1.5 * IQR)
-  const lowerBound = Math.max(0, q1 - 1.5 * iqr);
-  const upperBound = q3 + 1.5 * iqr;
-  const filtered = sorted.filter(val => val >= lowerBound && val <= upperBound);
-  
-  if (filtered.length === 0) return q3; // Fallback to Q3 if all filtered out
-  
-  // Return median of filtered values
-  const mid = Math.floor(filtered.length / 2);
-  const result = filtered.length % 2 === 0
-    ? (filtered[mid - 1] + filtered[mid]) / 2
-    : filtered[mid];
-    
-  return result > 0 ? result : 1;
+  return avgWorkload / capacity;
 };
 
 export const UtilizationTrendline = ({
   tickets,
   selectedFunction,
   timePeriod,
+  multipliers,
+  allTickets,
 }: UtilizationTrendlineProps) => {
-  // State for toggling series visibility
-  const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(new Set());
-
-  const trendData = useMemo(() => {
+  // Toggle between overall vs detailed view
+  const [showDetailed, setShowDetailed] = useState(false);
+  
+  // Real stats calculation
+  const stats = useMemo(() => {
     const closedTickets = tickets.filter(
-      (t) => t.status === "Closed" && 
-            t.closedDate && 
-            t.sprintClosed !== "#N/A" && 
-            t.assignee !== "#N/A" &&
-            t.function !== "#N/A"
+      t => t.status === "Closed" && 
+           t.sprintClosed && 
+           t.sprintClosed !== "#N/A" && 
+           t.assignee !== "#N/A"
+    );
+    
+    if (closedTickets.length === 0) {
+      return {
+        avgUtilization: 0,
+        totalPeople: 0,
+        overutilizedCount: 0,
+        underutilizedCount: 0,
+        optimalCount: 0,
+      };
+    }
+    
+    // Get unique assignees
+    const assignees = Array.from(new Set(closedTickets.map(t => t.assignee)));
+    
+    // Calculate utilization for each person
+    const utilizations: number[] = [];
+    assignees.forEach(assignee => {
+      const assigneeTickets = closedTickets.filter(t => t.assignee === assignee);
+      const allAssigneeTickets = allTickets.filter(
+        t => t.assignee === assignee && t.status === "Closed" && t.sprintClosed && t.sprintClosed !== "#N/A"
+      );
+      
+      const multiplierEntry = multipliers?.find(m => m.name?.toLowerCase() === assignee.toLowerCase());
+      
+      const utilization = calculatePersonUtilization(
+        assigneeTickets,
+        allAssigneeTickets,
+        multiplierEntry ? { capacity: multiplierEntry.capacity, metric: multiplierEntry.metric } : undefined
+      );
+      
+      if (isFinite(utilization) && !isNaN(utilization)) {
+        utilizations.push(utilization);
+      }
+    });
+    
+    if (utilizations.length === 0) {
+      return {
+        avgUtilization: 0,
+        totalPeople: assignees.length,
+        overutilizedCount: 0,
+        underutilizedCount: 0,
+        optimalCount: 0,
+      };
+    }
+    
+    // Calculate statistics
+    const avgUtil = (utilizations.reduce((a, b) => a + b, 0) / utilizations.length) * 100;
+    const overutilizedCount = utilizations.filter(u => u > 1.0).length;
+    const underutilizedCount = utilizations.filter(u => u < 0.7).length;
+    const optimalCount = utilizations.filter(u => u >= 0.7 && u <= 1.0).length;
+    
+    return {
+      avgUtilization: avgUtil,
+      totalPeople: utilizations.length,
+      overutilizedCount,
+      underutilizedCount,
+      optimalCount,
+    };
+  }, [tickets, multipliers, allTickets]);
+
+  // Real hiring recommendation based on utilization
+  const hiring = useMemo(() => {
+    if (stats.totalPeople === 0) {
+      return {
+        status: "No Data",
+        message: "No data available",
+        color: "text-gray-600",
+        score: 0,
+      };
+    }
+    
+    const avgUtil = stats.avgUtilization / 100; // Convert to ratio
+    const overutilizedPercent = (stats.overutilizedCount / stats.totalPeople) * 100;
+    
+    // Score calculation (0-100)
+    let score = 0;
+    
+    // Factor 1: Average utilization (0-50 points)
+    if (avgUtil >= 1.0) score += 50;
+    else if (avgUtil >= 0.7) score += 25 + ((avgUtil - 0.7) / 0.3) * 25;
+    else score += (avgUtil / 0.7) * 25;
+    
+    // Factor 2: Overutilized percentage (0-50 points)
+    if (overutilizedPercent >= 50) score += 50;
+    else if (overutilizedPercent >= 30) score += 30 + ((overutilizedPercent - 30) / 20) * 20;
+    else score += (overutilizedPercent / 30) * 30;
+    
+    // Penalty for high underutilization
+    const underutilizedPercent = (stats.underutilizedCount / stats.totalPeople) * 100;
+    if (underutilizedPercent > 50) score -= 20;
+    else if (underutilizedPercent > 30) score -= 10;
+    
+    score = Math.max(0, Math.min(100, score));
+    
+    let status: string, message: string, color: string;
+    if (score >= 65) {
+      status = "✓ Hire Recommended";
+      message = `${Math.round(score)}% recommendation score`;
+      color = "text-purple-600";
+    } else if (score >= 40) {
+      status = "⚠ Consider Hiring";
+      message = `${Math.round(score)}% recommendation score`;
+      color = "text-amber-600";
+    } else {
+      status = "✗ Not Recommended";
+      message = `${Math.round(score)}% recommendation score`;
+      color = "text-gray-600";
+    }
+    
+    return { status, message, color, score: Math.round(score) };
+  }, [stats]);
+
+  // Real chart data based on sprints - supports both overall and detailed views
+  const chartData = useMemo(() => {
+    const closedTickets = tickets.filter(
+      t => t.status === "Closed" && 
+           t.sprintClosed && 
+           t.sprintClosed !== "#N/A" && 
+           t.assignee !== "#N/A"
     );
     
     if (closedTickets.length === 0) return [];
     
-    // Calculate function baselines - extract unique functions from actual data
-    const uniqueFunctions = Array.from(new Set(
-      closedTickets.map(t => t.function).filter(f => f && f !== "#N/A")
-    )) as FunctionType[];
-    
-    const functionBaselines = new Map<FunctionType, number>();
-    uniqueFunctions.forEach(func => {
-      functionBaselines.set(func, calculateFunctionBaseline(tickets, func));
+    // Group by sprint
+    const sprintMap = new Map<string, ParsedTicket[]>();
+    closedTickets.forEach(ticket => {
+      const sprint = ticket.sprintClosed;
+      if (!sprintMap.has(sprint)) {
+        sprintMap.set(sprint, []);
+      }
+      sprintMap.get(sprint)!.push(ticket);
     });
     
-    // Determine if we use quarters or sprints
-    const useQuarters = timePeriod === "current_year";
+    // Sort sprints
+    const sortedSprints = Array.from(sprintMap.keys()).sort();
     
-    if (useQuarters) {
-      // Group by quarter
-      const quarterMap = new Map<string, ParsedTicket[]>();
-      closedTickets.forEach(ticket => {
-        if (ticket.closedDate) {
-          const quarter = getQuarter(ticket.closedDate);
-          if (!quarterMap.has(quarter)) {
-            quarterMap.set(quarter, []);
+    if (!showDetailed) {
+      // Overall view - single average line
+      return sortedSprints.map(sprint => {
+        const sprintTickets = sprintMap.get(sprint)!;
+        const assignees = Array.from(new Set(sprintTickets.map(t => t.assignee)));
+        
+        const utilizations: number[] = [];
+        assignees.forEach(assignee => {
+          const assigneeTickets = sprintTickets.filter(t => t.assignee === assignee);
+          const allAssigneeTickets = allTickets.filter(
+            t => t.assignee === assignee && t.status === "Closed" && t.sprintClosed && t.sprintClosed !== "#N/A"
+          );
+          
+          const multiplierEntry = multipliers?.find(m => m.name?.toLowerCase() === assignee.toLowerCase());
+          
+          const utilization = calculatePersonUtilization(
+            assigneeTickets,
+            allAssigneeTickets,
+            multiplierEntry ? { capacity: multiplierEntry.capacity, metric: multiplierEntry.metric } : undefined
+          );
+          
+          if (isFinite(utilization) && !isNaN(utilization)) {
+            utilizations.push(utilization);
           }
-          quarterMap.get(quarter)!.push(ticket);
-        }
-      });
-      
-      // Sort quarters chronologically
-      const sortedQuarters = Array.from(quarterMap.keys()).sort((a, b) => {
-        const [qA, yearA] = a.split(" ");
-        const [qB, yearB] = b.split(" ");
-        const yearDiff = parseInt(yearA) - parseInt(yearB);
-        if (yearDiff !== 0) return yearDiff;
-        return parseInt(qA.substring(1)) - parseInt(qB.substring(1));
-      });
-      
-      if (selectedFunction) {
-        // Show person-level data for selected function
-        const assignees = Array.from(
-          new Set(
-            closedTickets
-              .filter(t => t.function === selectedFunction)
-              .map(t => t.assignee)
-          )
-        );
-        
-        return sortedQuarters.map(quarter => {
-          const quarterTickets = quarterMap.get(quarter)!;
-          const dataPoint: any = { period: quarter };
-          
-          assignees.forEach(assignee => {
-            const utilization = calculateUtilization(
-              quarterTickets,
-              assignee,
-              selectedFunction,
-              functionBaselines
-            );
-            const utilizationPercent = utilization * 100;
-            dataPoint[assignee] = isNaN(utilizationPercent) || !isFinite(utilizationPercent) ? 0 : utilizationPercent;
-          });
-          
-          return dataPoint;
         });
-      } else {
-        // Show function-level data (average utilization per function)
-        // Use all functions that have any data across all quarters
-        const activeFunctions = uniqueFunctions.filter(func => 
-          closedTickets.some(t => t.function === func)
-        );
         
-        return sortedQuarters.map(quarter => {
-          const quarterTickets = quarterMap.get(quarter)!;
-          const dataPoint: any = { period: quarter };
-          
-          activeFunctions.forEach(func => {
-            const funcTickets = quarterTickets.filter(t => t.function === func);
-            const assignees = Array.from(new Set(funcTickets.map(t => t.assignee)));
-            
-            if (assignees.length > 0) {
-              const utilizations = assignees.map(assignee =>
-                calculateUtilization(funcTickets, assignee, func, functionBaselines)
-              );
-              const avgUtilization = utilizations.reduce((a, b) => a + b, 0) / utilizations.length;
-              const utilizationPercent = avgUtilization * 100;
-              dataPoint[func] = isNaN(utilizationPercent) || !isFinite(utilizationPercent) ? 0 : utilizationPercent;
-            } else {
-              // Set to 0 if no data for this quarter but function exists in other quarters
-              dataPoint[func] = 0;
-            }
-          });
-          
-          return dataPoint;
-        });
-      }
+        const avgUtil = utilizations.length > 0 
+          ? (utilizations.reduce((a, b) => a + b, 0) / utilizations.length) * 100 
+          : 0;
+        
+        return {
+          sprint,
+          Overall: Math.round(avgUtil * 10) / 10,
+        };
+      });
     } else {
-      // Group by sprint
-      const sprintMap = new Map<string, ParsedTicket[]>();
-      closedTickets.forEach(ticket => {
-        if (ticket.sprintClosed) {
-          if (!sprintMap.has(ticket.sprintClosed)) {
-            sprintMap.set(ticket.sprintClosed, []);
-          }
-          sprintMap.get(ticket.sprintClosed)!.push(ticket);
-        }
-      });
-      
-      // Sort sprints
-      const sortedSprints = Array.from(sprintMap.keys()).sort();
-      
+      // Detailed view - per function or per individual
       if (selectedFunction) {
-        // Show person-level data for selected function
-        const assignees = Array.from(
-          new Set(
-            closedTickets
-              .filter(t => t.function === selectedFunction)
-              .map(t => t.assignee)
-          )
-        );
+        // Show per individual (names) when function is selected
+        // First, collect ALL assignees across all sprints
+        const allAssignees = Array.from(new Set(closedTickets.map(t => t.assignee)));
         
         return sortedSprints.map(sprint => {
           const sprintTickets = sprintMap.get(sprint)!;
-          const dataPoint: any = { period: sprint };
+          const dataPoint: any = { sprint };
           
-          assignees.forEach(assignee => {
-            const utilization = calculateUtilization(
-              sprintTickets,
-              assignee,
-              selectedFunction,
-              functionBaselines
+          // Calculate for ALL assignees (not just those in this sprint)
+          allAssignees.forEach(assignee => {
+            const assigneeTickets = sprintTickets.filter(t => t.assignee === assignee);
+            const allAssigneeTickets = allTickets.filter(
+              t => t.assignee === assignee && t.status === "Closed" && t.sprintClosed && t.sprintClosed !== "#N/A"
             );
-            const utilizationPercent = utilization * 100;
-            dataPoint[assignee] = isNaN(utilizationPercent) || !isFinite(utilizationPercent) ? 0 : utilizationPercent;
+            
+            const multiplierEntry = multipliers?.find(m => m.name?.toLowerCase() === assignee.toLowerCase());
+            
+            const utilization = calculatePersonUtilization(
+              assigneeTickets,
+              allAssigneeTickets,
+              multiplierEntry ? { capacity: multiplierEntry.capacity, metric: multiplierEntry.metric } : undefined
+            );
+            
+            // Always add to dataPoint (even if 0) so line is continuous
+            dataPoint[assignee] = isFinite(utilization) && !isNaN(utilization) 
+              ? Math.round(utilization * 1000) / 10 
+              : 0;
           });
           
           return dataPoint;
         });
       } else {
-        // Show function-level data (average utilization per function)
-        // Use all functions that have any data across all sprints
-        const activeFunctions = uniqueFunctions.filter(func => 
-          closedTickets.some(t => t.function === func)
-        );
+        // Show per function when no function filter
+        // First, collect ALL functions across all sprints
+        const allFunctions = Array.from(new Set(closedTickets.map(t => t.function).filter(f => f !== "#N/A")));
         
         return sortedSprints.map(sprint => {
           const sprintTickets = sprintMap.get(sprint)!;
-          const dataPoint: any = { period: sprint };
+          const dataPoint: any = { sprint };
           
-          activeFunctions.forEach(func => {
+          // Calculate for ALL functions (not just those in this sprint)
+          allFunctions.forEach(func => {
             const funcTickets = sprintTickets.filter(t => t.function === func);
-            const assignees = Array.from(new Set(funcTickets.map(t => t.assignee)));
             
-            if (assignees.length > 0) {
-              const utilizations = assignees.map(assignee =>
-                calculateUtilization(funcTickets, assignee, func, functionBaselines)
-              );
-              const avgUtilization = utilizations.reduce((a, b) => a + b, 0) / utilizations.length;
-              const utilizationPercent = avgUtilization * 100;
-              dataPoint[func] = isNaN(utilizationPercent) || !isFinite(utilizationPercent) ? 0 : utilizationPercent;
-            } else {
-              // Set to 0 if no data for this sprint but function exists in other sprints
+            if (funcTickets.length === 0) {
+              // No tickets for this function in this sprint
               dataPoint[func] = 0;
+            } else {
+              const assignees = Array.from(new Set(funcTickets.map(t => t.assignee)));
+              
+              const utilizations: number[] = [];
+              assignees.forEach(assignee => {
+                const assigneeTickets = funcTickets.filter(t => t.assignee === assignee);
+                const allAssigneeTickets = allTickets.filter(
+                  t => t.assignee === assignee && t.status === "Closed" && t.sprintClosed && t.sprintClosed !== "#N/A"
+                );
+                
+                const multiplierEntry = multipliers?.find(m => m.name?.toLowerCase() === assignee.toLowerCase());
+                
+                const utilization = calculatePersonUtilization(
+                  assigneeTickets,
+                  allAssigneeTickets,
+                  multiplierEntry ? { capacity: multiplierEntry.capacity, metric: multiplierEntry.metric } : undefined
+                );
+                
+                if (isFinite(utilization) && !isNaN(utilization)) {
+                  utilizations.push(utilization);
+                }
+              });
+              
+              const avgUtil = utilizations.length > 0 
+                ? (utilizations.reduce((a, b) => a + b, 0) / utilizations.length) * 100 
+                : 0;
+              
+              dataPoint[func] = Math.round(avgUtil * 10) / 10;
             }
           });
           
@@ -327,279 +374,169 @@ export const UtilizationTrendline = ({
         });
       }
     }
-  }, [tickets, selectedFunction, timePeriod]);
+  }, [tickets, multipliers, allTickets, showDetailed, selectedFunction]);
   
-  // Get series names (either functions or assignees)
+  // Get all series names (for detailed view)
   const seriesNames = useMemo(() => {
-    if (trendData.length === 0) return [];
-    return Object.keys(trendData[0]).filter(key => key !== "period");
-  }, [trendData]);
+    if (chartData.length === 0) return [];
+    const keys = Object.keys(chartData[0]).filter(key => key !== "sprint");
+    return keys;
+  }, [chartData]);
   
-  // Toggle series visibility
-  const toggleSeries = (seriesName: string) => {
-    setHiddenSeries(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(seriesName)) {
-        newSet.delete(seriesName);
-      } else {
-        newSet.add(seriesName);
-      }
-      return newSet;
-    });
-  };
-  
-  // Show/hide all series
-  const toggleAllSeries = () => {
-    if (hiddenSeries.size === seriesNames.length) {
-      setHiddenSeries(new Set());
-    } else {
-      setHiddenSeries(new Set(seriesNames));
-    }
-  };
-  
-  // Color palette for lines - vibrant gradients
+  // Color palette for multiple lines
   const colors = [
-    "#8b5cf6", // purple
-    "#3b82f6", // blue
-    "#10b981", // green
-    "#f59e0b", // amber
-    "#ef4444", // red
-    "#ec4899", // pink
-    "#14b8a6", // teal
-    "#f97316", // orange
-    "#6366f1", // indigo
-    "#a855f7", // violet
+    "#8b5cf6", "#3b82f6", "#10b981", "#f59e0b", "#ef4444",
+    "#ec4899", "#14b8a6", "#f97316", "#6366f1", "#a855f7",
   ];
-  
-  const title = selectedFunction
-    ? `${selectedFunction} Team Utilization Over Time`
-    : "Function Utilization Over Time";
-  
-  const xAxisLabel = timePeriod === "current_year" ? "Quarter" : "Sprint";
-  
-  if (trendData.length === 0) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <TrendingUp className="h-5 w-5 text-primary" />
-            {title}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="text-center py-8 text-muted-foreground">
-            <p>No utilization data available for the selected period</p>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-  
+
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.3 }}
-    >
-      <Card className="bg-gradient-to-br from-card/80 to-card/40 backdrop-blur border-primary/20">
-        <CardHeader>
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2">
-                <motion.div
-                  animate={{ rotate: [0, 360] }}
-                  transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
-                >
-                  <TrendingUp className="h-5 w-5 text-primary" />
-                </motion.div>
-                {title}
-              </CardTitle>
-              <div className="flex items-center gap-2">
-                <Badge variant="secondary" className="font-semibold">
-                  {seriesNames.length - hiddenSeries.size} / {seriesNames.length} visible
-                </Badge>
-                <motion.button
-                  onClick={toggleAllSeries}
-                  className="p-2 rounded-lg hover:bg-muted transition-colors"
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  title={hiddenSeries.size === seriesNames.length ? "Show All" : "Hide All"}
-                >
-                  {hiddenSeries.size === seriesNames.length ? (
-                    <Eye className="h-4 w-4 text-muted-foreground" />
-                  ) : (
-                    <EyeOff className="h-4 w-4 text-muted-foreground" />
-                  )}
-                </motion.button>
-              </div>
-            </div>
-            
-            {/* Interactive Legend */}
-            <div className="flex flex-wrap gap-2">
-              {seriesNames.map((name, index) => {
-                const isHidden = hiddenSeries.has(name);
-                const color = colors[index % colors.length];
-                
-                return (
-                  <motion.button
-                    key={name}
-                    onClick={() => toggleSeries(name)}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-full border-2 transition-all ${
-                      isHidden
-                        ? "bg-muted/20 border-muted/30 opacity-50"
-                        : "bg-card/80 border-current shadow-sm hover:shadow-md"
-                    }`}
-                    style={{
-                      borderColor: isHidden ? undefined : color,
-                    }}
-                    whileHover={{ scale: 1.05, y: -2 }}
-                    whileTap={{ scale: 0.95 }}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.05 }}
-                  >
-                    <div
-                      className={`w-3 h-3 rounded-full transition-all ${
-                        isHidden ? "bg-muted" : ""
-                      }`}
-                      style={{
-                        backgroundColor: isHidden ? undefined : color,
-                        boxShadow: isHidden ? undefined : `0 0 8px ${color}40`,
-                      }}
-                    />
-                    <span className={`text-xs font-medium ${isHidden ? "text-muted-foreground line-through" : ""}`}>
-                      {name}
-                    </span>
-                  </motion.button>
-                );
-              })}
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <ResponsiveContainer width="100%" height={450}>
-            <LineChart data={trendData}>
-              <defs>
-                {seriesNames.map((name, index) => (
-                  <linearGradient
-                    key={name}
-                    id={`gradient-${name}`}
-                    x1="0"
-                    y1="0"
-                    x2="0"
-                    y2="1"
-                  >
-                    <stop
-                      offset="5%"
-                      stopColor={colors[index % colors.length]}
-                      stopOpacity={0.8}
-                    />
-                    <stop
-                      offset="95%"
-                      stopColor={colors[index % colors.length]}
-                      stopOpacity={0.1}
-                    />
-                  </linearGradient>
-                ))}
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.2} />
-              
-              {/* Reference lines for utilization zones */}
-              <line
-                x1="0"
-                y1="0"
-                x2="100%"
-                y2="0"
-                stroke="#10b981"
-                strokeWidth={1}
-                strokeDasharray="5 5"
-                opacity={0.3}
-              />
-              
-              <XAxis
-                dataKey="period"
-                stroke="#9ca3af"
-                style={{ fontSize: "12px", fontWeight: 500 }}
-                tick={{ fill: "#9ca3af" }}
-                axisLine={{ stroke: "#4b5563" }}
-              />
-              <YAxis
-                stroke="#9ca3af"
-                style={{ fontSize: "12px", fontWeight: 500 }}
-                tick={{ fill: "#9ca3af" }}
-                axisLine={{ stroke: "#4b5563" }}
-                label={{
-                  value: "Utilization (%)",
-                  angle: -90,
-                  position: "insideLeft",
-                  style: { fill: "#9ca3af", fontWeight: 600 },
-                }}
-                domain={[0, 'auto']}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: "rgba(17, 24, 39, 0.98)",
-                  border: "2px solid #374151",
-                  borderRadius: "12px",
-                  boxShadow: "0 8px 16px rgba(0, 0, 0, 0.4)",
-                  padding: "12px",
-                }}
-                formatter={(value: any, name: string) => [`${value.toFixed(1)}%`, name]}
-                labelStyle={{ color: "#f9fafb", fontWeight: 600, marginBottom: "8px" }}
-                itemStyle={{ color: "#e5e7eb", padding: "4px 0" }}
-              />
-              
-              {/* Render lines - skip hidden series */}
-              {seriesNames.map((name, index) => {
-                if (hiddenSeries.has(name)) return null;
-                
-                return (
-                  <Line
-                    key={name}
-                    type="monotone"
-                    dataKey={name}
-                    stroke={colors[index % colors.length]}
-                    strokeWidth={3}
-                    dot={{
-                      r: 5,
-                      strokeWidth: 2,
-                      fill: colors[index % colors.length],
-                      stroke: "#fff",
-                    }}
-                    activeDot={{
-                      r: 7,
-                      strokeWidth: 3,
-                      fill: colors[index % colors.length],
-                      stroke: "#fff",
-                      filter: `drop-shadow(0 0 8px ${colors[index % colors.length]})`,
-                    }}
-                    animationBegin={index * 80}
-                    animationDuration={1000}
-                    animationEasing="ease-in-out"
-                  />
-                );
-              })}
-            </LineChart>
-          </ResponsiveContainer>
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <TrendingUp className="h-5 w-5" />
+            Utilization Over Time
+          </CardTitle>
           
-          {/* Reference line indicators */}
-          <div className="mt-4 flex justify-center gap-6 text-xs text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <div className="w-12 h-0.5 bg-green-500" />
-              <span>Under 80%: Underutilized</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-12 h-0.5 bg-blue-500" />
-              <span>80-100%: Optimal</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-12 h-0.5 bg-red-500" />
-              <span>Over 100%: Overutilized</span>
-            </div>
+          {/* Toggle for detailed view */}
+          <div className="flex items-center gap-2">
+            <Button
+              variant={showDetailed ? "outline" : "default"}
+              size="sm"
+              onClick={() => setShowDetailed(false)}
+              className="gap-2"
+            >
+              <BarChart3 className="h-4 w-4" />
+              Overall
+            </Button>
+            <Button
+              variant={showDetailed ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowDetailed(true)}
+              className="gap-2"
+            >
+              <User className="h-4 w-4" />
+              {selectedFunction ? "Individual" : "By Function"}
+            </Button>
           </div>
-        </CardContent>
-      </Card>
-    </motion.div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {/* Summary Cards - Simple and Clean */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          {/* Card 1: Hiring Recommendation */}
+          <Card className="bg-purple-50 dark:bg-purple-900/20">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-gray-600 mb-1">Hiring Recommendation</p>
+                  <p className={`text-xl font-bold ${hiring.color}`}>
+                    {hiring.status}
+                  </p>
+                  <p className="text-xs text-gray-600 mt-1">
+                    {hiring.message}
+                  </p>
+                  <div className="mt-2">
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 bg-gray-200 rounded-full h-2">
+                        <div
+                          className="bg-gradient-to-r from-green-500 via-amber-500 to-red-500 h-2 rounded-full"
+                          style={{ width: `${hiring.score}%` }}
+                        />
+                      </div>
+                      <span className="text-sm font-medium">{hiring.score}%</span>
+                    </div>
+                  </div>
+                </div>
+                <Users className="h-8 w-8 text-purple-600 ml-4" />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Card 2: Average Utilization */}
+          <Card className="bg-blue-50 dark:bg-blue-900/20">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-600 mb-1">Average Utilization</p>
+                  <p className="text-3xl font-bold text-blue-600">
+                    {stats.avgUtilization.toFixed(1)}%
+                  </p>
+                  <p className="text-xs text-gray-600 mt-1">
+                    Across {stats.totalPeople} people
+                  </p>
+                </div>
+                <TrendingUp className="h-8 w-8 text-blue-600" />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Card 3: Team Status */}
+          <Card className="bg-green-50 dark:bg-green-900/20">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-600 mb-1">Team Status</p>
+                  <p className="text-lg font-bold text-green-600">
+                    {stats.overutilizedCount > stats.underutilizedCount 
+                      ? "⚠ Overloaded" 
+                      : stats.underutilizedCount > stats.optimalCount 
+                      ? "✓ Has Capacity" 
+                      : "✓ Balanced"}
+                  </p>
+                  <p className="text-xs text-gray-600 mt-1">
+                    {stats.optimalCount} in optimal range
+                  </p>
+                </div>
+                <div className="text-right text-sm text-gray-600">
+                  <div>Over: {stats.overutilizedCount}</div>
+                  <div>Under: {stats.underutilizedCount}</div>
+                  <div>Optimal: {stats.optimalCount}</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Chart */}
+        <ResponsiveContainer width="100%" height={350}>
+          <LineChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis 
+              dataKey="sprint" 
+              style={{ fontSize: "12px" }}
+            />
+            <YAxis 
+              label={{ value: 'Utilization (%)', angle: -90, position: 'insideLeft' }}
+              style={{ fontSize: "12px" }}
+            />
+            <Tooltip 
+              contentStyle={{
+                backgroundColor: "rgba(17, 24, 39, 0.95)",
+                border: "1px solid #374151",
+                borderRadius: "8px",
+              }}
+            />
+            <Legend 
+              wrapperStyle={{ paddingTop: "10px" }}
+            />
+            
+            {/* Render lines based on view mode */}
+            {seriesNames.map((name, index) => (
+              <Line
+                key={name}
+                type="monotone"
+                dataKey={name}
+                stroke={colors[index % colors.length]}
+                strokeWidth={showDetailed ? 2 : 3}
+                dot={{ r: showDetailed ? 3 : 4 }}
+                activeDot={{ r: showDetailed ? 5 : 6 }}
+                name={name}
+              />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+      </CardContent>
+    </Card>
   );
 };
-

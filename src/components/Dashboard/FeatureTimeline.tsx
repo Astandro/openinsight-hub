@@ -241,8 +241,6 @@ export const FeatureTimeline = ({ tickets, filters }: FeatureTimelineProps) => {
     const allChildTickets = tickets.filter(t => t.parentId && t.closedDate);
     const filteredChildTickets = applyFilters(allChildTickets, filters);
     
-    console.log(`Found ${filteredChildTickets.length} child tickets (User Stories, Bugs, etc.) after applying sidebar filters`);
-    
     // Step 2: Identify which FEATURES have at least one filtered child ticket
     const featuresWithFilteredChildren = new Set<string>();
     filteredChildTickets.forEach(child => {
@@ -251,21 +249,14 @@ export const FeatureTimeline = ({ tickets, filters }: FeatureTimelineProps) => {
       }
     });
     
-    console.log(`Features with filtered children: ${featuresWithFilteredChildren.size}`);
-    
     // Step 3: Get ALL FEATURE-level tickets that have filtered children
-    const relevantFeatures = tickets.filter(t => 
-      t.normalizedType === "Feature" && 
-      !t.parentId &&
-      t.closedDate &&
-      featuresWithFilteredChildren.has(t.id)
-    );
-    
-    console.log(`Found ${relevantFeatures.length} FEATURE-level tickets with matching children:`, relevantFeatures.map(f => ({ 
-      id: f.id, 
-      title: f.title, 
-      type: f.type
-    })));
+    // Also apply project filter to features if set
+    const relevantFeatures = tickets.filter(t => {
+      const isFeature = t.normalizedType === "Feature" && !t.parentId && t.closedDate;
+      const hasFilteredChildren = featuresWithFilteredChildren.has(t.id);
+      const matchesProject = !filters.selectedProject || t.project === filters.selectedProject;
+      return isFeature && hasFilteredChildren && matchesProject;
+    });
     
     // Create feature entries grouped by TITLE (not ID)
     relevantFeatures.forEach(feature => {
@@ -310,8 +301,6 @@ export const FeatureTimeline = ({ tickets, filters }: FeatureTimelineProps) => {
       if (featureMap.has(featureName)) {
         const featureEntry = featureMap.get(featureName)!;
         
-        console.log(`  ↳ Aggregating: ${ticket.type} (${ticket.assignee}/${ticket.function}) → Feature ${ticket.parentId}, SP: ${ticket.storyPoints}`);
-        
         // Add assignee if not already in list
         if (!featureEntry.assignees.includes(ticket.assignee)) {
           featureEntry.assignees.push(ticket.assignee);
@@ -338,8 +327,6 @@ export const FeatureTimeline = ({ tickets, filters }: FeatureTimelineProps) => {
         if (ticket.closedDate > featureEntry.endDate) {
           featureEntry.endDate = ticket.closedDate;
         }
-      } else {
-        console.warn(`⚠️  Child ticket ${ticket.id} (${ticket.type}) references missing FEATURE: ${ticket.parentId}`);
       }
     });
     
@@ -347,11 +334,6 @@ export const FeatureTimeline = ({ tickets, filters }: FeatureTimelineProps) => {
     const mergedFeatures = Array.from(featureMap.values());
     mergedFeatures.forEach(feature => {
       feature.duration = getDaysBetween(feature.startDate, feature.endDate);
-      console.log(`Feature ${feature.id}: ${feature.title}`, {
-        totalSP: feature.totalStoryPoints,
-        ticketCount: feature.ticketCount,
-        contributors: feature.assigneesByFunction
-      });
     });
     
     return mergedFeatures.sort((a, b) => a.startDate.getTime() - b.startDate.getTime());

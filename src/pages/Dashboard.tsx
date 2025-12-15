@@ -33,6 +33,8 @@ const Dashboard = () => {
   const [userRole, setUserRole] = useState<string | null>(null);
   const [username, setUsername] = useState<string>("");
   const [tickets, setTickets] = useState<ParsedTicket[]>([]);
+  const [multipliers, setMultipliers] = useState<any[]>([]);
+  const [sprintConfigs, setSprintConfigs] = useState<any[]>([]);
   const [filters, setFilters] = useState<Filters>({
     searchAssignee: "",
     selectedProject: null,
@@ -112,6 +114,14 @@ const Dashboard = () => {
         setThresholds(serverData.thresholds);
       }
       
+      if (serverData.multipliers && serverData.multipliers.length > 0) {
+        setMultipliers(serverData.multipliers);
+      }
+      
+      if (serverData.sprintConfigs && serverData.sprintConfigs.length > 0) {
+        setSprintConfigs(serverData.sprintConfigs);
+      }
+      
       setLastRefresh(Date.now());
     } catch (error) {
       console.error('Failed to load data from server:', error);
@@ -161,12 +171,6 @@ const Dashboard = () => {
     toast.success(`Welcome back, ${username}!`);
   };
 
-  const handleLogout = () => {
-    logout();
-    setUserRole(null);
-    setUsername("");
-    toast.success("Logged out successfully");
-  };
 
   const handleClearData = async () => {
     try {
@@ -211,10 +215,13 @@ const Dashboard = () => {
     
     // Calculate metrics from filteredTickets for performance metrics
     // But feature contributions will be calculated from projectFilteredTickets
-    const metrics = assignees.map((assignee) => 
-      calculateAssigneeMetrics(filteredTickets, assignee, projectFilteredTickets)
-    );
-    return calculateEnhancedMetrics(metrics, thresholds, filteredTickets);
+    const metrics = assignees.map((assignee) => {
+      // Find multiplier for this person (for performance/z-score calculations only, NOT for utilization)
+      const multiplierEntry = multipliers.find((m: any) => m.name?.toLowerCase() === assignee.toLowerCase());
+      const multiplier = multiplierEntry?.formula || 1.0;
+      return calculateAssigneeMetrics(filteredTickets, assignee, projectFilteredTickets, multiplier);
+    });
+    return calculateEnhancedMetrics(metrics, thresholds, filteredTickets, multipliers);
   }, [tickets, filteredTickets, thresholds, filters.selectedProject]);
 
   const functionMetrics = useMemo(() => {
@@ -325,7 +332,7 @@ const Dashboard = () => {
     reader.onload = (e) => {
       try {
         const csv = e.target?.result as string;
-        const parsed = parseCSV(csv);
+        const parsed = parseCSV(csv, multipliers, sprintConfigs); // Pass multiplier database and sprint configs
         setTickets(parsed);
         toast.success(`Successfully loaded ${parsed.length} tickets`);
       } catch (error) {
@@ -394,13 +401,11 @@ const Dashboard = () => {
                   filters.timePeriod === "current_year" ? "Current Year" : "All Time"
       };
       
-      console.log("PDF Data:", pdfData); // Debug log
-      
       const pdf = generatePDFReport(pdfData);
       pdf.save(`teamlight-report-${new Date().toISOString().split('T')[0]}.pdf`);
       toast.success("PDF report generated successfully");
     } catch (error) {
-      console.error("PDF Generation Error:", error); // Debug log
+      console.error("PDF Generation Error:", error);
       toast.error(`Failed to generate PDF report: ${error.message || 'Unknown error'}`);
     }
   };
@@ -465,20 +470,12 @@ const Dashboard = () => {
               
               <ThemeToggle />
               
-              {/* User info and logout */}
+              {/* User info */}
               <div className="flex items-center gap-2">
                 <Badge variant={userRole === 'admin' ? 'default' : 'secondary'}>
                   {userRole === 'admin' ? 'Admin' : 'User'}
                 </Badge>
                 <span className="text-sm text-muted-foreground">{username}</span>
-                <Button
-                  variant="outline"
-                  onClick={handleLogout}
-                  className="gap-2"
-                >
-                  <LogIn className="h-4 w-4" />
-                  Logout
-                </Button>
               </div>
               
               {/* Admin button - only show for admin users */}
@@ -559,6 +556,8 @@ const Dashboard = () => {
                 tickets={filteredTickets} 
                 selectedFunction={filters.selectedFunction}
                 timePeriod={filters.timePeriod}
+                multipliers={multipliers}
+                allTickets={tickets}
               />
             </div>
 

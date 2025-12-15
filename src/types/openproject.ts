@@ -5,10 +5,13 @@ export type FunctionType =
   | "DESIGNER" 
   | "PRODUCT" 
   | "INFRA" 
+  | "OPERATION"
   | "BUSINESS SUPPORT" 
   | "RESEARCHER" 
   | "FOUNDRY" 
-  | "UX WRITER";
+  | "UX WRITER"
+  | "APPS"
+  | "ENGINEERING MANAGER";
 
 export type StatusType = "Closed" | "Open" | "In Progress" | "Review" | string;
 
@@ -16,7 +19,7 @@ export type TicketType = "Bug" | "Feature" | "Task" | "Story" | string;
 
 export interface CSVRow {
   Assignee: string;
-  Function: FunctionType;
+  Function?: FunctionType; // Optional - will be looked up from multiplier database
   Status: StatusType;
   "Story Points": string;
   Type: TicketType;
@@ -26,9 +29,12 @@ export interface CSVRow {
   "Created At": string;
   "Updated At": string;
   "Start Date"?: string; // Optional start date column
+  "Due Date"?: string;   // Optional due date column
+  "Finish Date"?: string; // Alternative due date column name
+  "End Date"?: string;    // Alternative due date column name
   Subject: string;
   Parent?: string;
-  Multiplier?: string;
+  Multiplier?: string; // Optional - will be looked up from multiplier database
 }
 
 export interface ParsedTicket {
@@ -131,4 +137,21 @@ export interface Alert {
   function?: FunctionType;
   assignee?: string;
   value?: number;
+}
+
+// Multiplier Database Entry (Name, Position/Function, Formula/Multiplier, Capacity, Metric)
+export interface MultiplierEntry {
+  name: string;          // Nama - person's name
+  position: FunctionType; // Posisi - function/role (BE, FE, QA, etc)
+  formula: number;       // Formula - multiplier value
+  capacity?: number;     // Capacity - max number for 100% utilization (optional)
+  metric?: "sp" | "ticket"; // Metric - "sp" for story points, "ticket" for ticket count (optional)
+}
+
+// Sprint Configuration for date-based sprint calculation
+export interface SprintConfig {
+  sprintNumber: number;
+  startDate: Date;
+  endDate: Date;
+  project: string;
 }

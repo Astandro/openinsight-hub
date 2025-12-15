@@ -82,7 +82,7 @@ export const CSVUpload = ({ onFileSelect, onLoadSample }: CSVUploadProps) => {
         <div className="mt-8 pt-8 border-t border-border">
           <p className="text-sm text-muted-foreground mb-2">Required CSV columns:</p>
           <div className="flex flex-wrap gap-2 justify-center">
-            {["Assignee", "Function", "Status", "Story Points", "Type", "Project", "Sprint Closed", "Created Date", "Closed Date", "Subject"].map((col) => (
+            {["Assignee", "Status", "Story Points", "Type", "Project", "Sprint Closed", "Created Date", "Closed Date", "Subject"].map((col) => (
               <span
                 key={col}
                 className="px-2 py-1 text-xs font-mono bg-secondary rounded"
@@ -91,6 +91,9 @@ export const CSVUpload = ({ onFileSelect, onLoadSample }: CSVUploadProps) => {
               </span>
             ))}
           </div>
+          <p className="text-xs text-muted-foreground mt-3 text-center">
+            Note: Function and Multiplier columns are no longer needed - they're loaded from the Multiplier Database
+          </p>
         </div>
       </Card>
     </motion.div>

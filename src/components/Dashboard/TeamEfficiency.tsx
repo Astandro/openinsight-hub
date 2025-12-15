@@ -176,7 +176,23 @@ export const TeamEfficiency = ({
     const avgSPPerPerson = spPerPersonValues.reduce((a, b) => a + b, 0) / n;
     
     // Predict impact of adding/removing 1 person
-    const addOnePersonSP = spRegression.slope;
+    // Use regression slope, but ensure it makes sense:
+    // - If slope is negative, it means team is scaling poorly (dysfunctional)
+    // - But we should still show realistic prediction: new person adds at least avg SP/person
+    // - Cap negative predictions to reasonable minimum (can't go below 0)
+    let addOnePersonSP = spRegression.slope;
+    
+    // If prediction is negative or too low, use average SP per person as baseline
+    // This assumes new person performs at team average
+    if (addOnePersonSP < avgSPPerPerson * 0.5) {
+      // If regression predicts less than 50% of average, use average instead
+      // This handles cases where regression is picking up noise or reverse causality
+      addOnePersonSP = avgSPPerPerson;
+    }
+    
+    // Ensure prediction is at least 0 (can't have negative total SP)
+    addOnePersonSP = Math.max(0, addOnePersonSP);
+    
     const addOnePersonEfficiency = efficiencyRegression.slope;
     
     // Calculate overall productivity trend (using time as x-axis)
@@ -184,6 +200,7 @@ export const TeamEfficiency = ({
     const productivityTrendRegression = linearRegression(timeIndices, spPerPersonValues);
     
     // Determine if team should grow based on efficiency trend
+    // Higher confidence (rSquared) + positive efficiency slope = should grow
     const shouldGrow = efficiencyRegression.slope >= 0; // If adding people maintains/improves efficiency
     const correlationStrength = spRegression.rSquared;
     
@@ -219,6 +236,19 @@ export const TeamEfficiency = ({
       
       // Efficiency metrics
       efficiencySlope: safeFormat(efficiencyRegression.slope, 2),
+    };
+  }, [chartData]);
+  
+  // Calculate Y-axis domains for better scaling
+  const yAxisDomains = useMemo(() => {
+    if (chartData.length === 0) return { teamSize: [0, 10], storyPoints: [0, 100] };
+    
+    const maxTeamSize = Math.max(...chartData.map(d => d.teamSize));
+    const maxStoryPoints = Math.max(...chartData.map(d => d.storyPoints));
+    
+    return {
+      teamSize: [0, Math.ceil(maxTeamSize * 1.2)], // Add 20% headroom
+      storyPoints: [0, Math.ceil(maxStoryPoints * 1.1)], // Add 10% headroom
     };
   }, [chartData]);
   
@@ -282,7 +312,7 @@ export const TeamEfficiency = ({
           
           {/* Key Insights - Statistical Analysis */}
           {insights && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-4">
               {/* Impact of Adding 1 Person */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
@@ -396,50 +426,6 @@ export const TeamEfficiency = ({
                   </UITooltip>
                 </TooltipProvider>
               </motion.div>
-              
-              {/* Recommendation */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.4 }}
-                className={`p-3 rounded-lg bg-gradient-to-br border ${
-                  insights.shouldGrow
-                    ? "from-purple-500/10 to-purple-500/5 border-purple-500/20"
-                    : "from-amber-500/10 to-amber-500/5 border-amber-500/20"
-                }`}
-              >
-                <TooltipProvider>
-                  <UITooltip>
-                    <TooltipTrigger asChild>
-                      <div className="cursor-help">
-                        <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-                          Scaling Impact
-                          <Info className="h-3 w-3" />
-                        </div>
-                        <div className={`text-sm font-bold ${
-                          insights.shouldGrow
-                            ? "text-purple-600 dark:text-purple-400"
-                            : "text-amber-600 dark:text-amber-400"
-                        }`}>
-                          {insights.shouldGrow ? '✓ Scales Well' : '⚠ Review Scaling'}
-                          <div className="text-xs font-normal mt-1">
-                            Confidence: {insights.correlationStrength}%
-                          </div>
-                        </div>
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent className="max-w-xs">
-                      <p>
-                        {insights.shouldGrow
-                          ? `Team scales efficiently. Adding members maintains or improves per-person productivity (${insights.efficiencySlope} SP/person per member).`
-                          : `Adding members may reduce per-person productivity (${insights.efficiencySlope} SP/person per member). Consider process improvements before scaling.`
-                        }
-                        {' '}Data correlation: {insights.correlationStrength}% (R²={insights.rSquared}).
-                      </p>
-                    </TooltipContent>
-                  </UITooltip>
-                </TooltipProvider>
-              </motion.div>
             </div>
           )}
         </CardHeader>
@@ -474,6 +460,7 @@ export const TeamEfficiency = ({
               {/* Left Y-Axis for Story Points */}
               <YAxis
                 yAxisId="left"
+                domain={yAxisDomains.storyPoints}
                 stroke="#3b82f6"
                 style={{ fontSize: "12px", fontWeight: 500 }}
                 tick={{ fill: "#3b82f6" }}
@@ -490,6 +477,7 @@ export const TeamEfficiency = ({
               <YAxis
                 yAxisId="right"
                 orientation="right"
+                domain={yAxisDomains.teamSize}
                 stroke="#8b5cf6"
                 style={{ fontSize: "12px", fontWeight: 500 }}
                 tick={{ fill: "#8b5cf6" }}
@@ -626,10 +614,12 @@ export const TeamEfficiency = ({
             {insights && (
               <div className="mt-3 pt-3 border-t border-border/50">
                 <p className="text-xs text-muted-foreground">
-                  <span className="font-medium text-foreground">Recommendation:</span> {
-                    insights.shouldGrow
-                      ? `Team scales efficiently (${insights.efficiencySlope} SP/person per new member). Adding people is recommended if workload demands.`
-                      : `Consider improving team processes before scaling. Current data shows ${insights.efficiencySlope} SP/person change per new member.`
+                  <span className="font-medium text-foreground">Analysis:</span> {
+                    insights.productivityTrend === "improving"
+                      ? `Team productivity is ${insights.productivityTrend} (${insights.productivitySlope}% change rate). Adding 1 person: +${insights.addOnePersonSP} SP.`
+                      : insights.productivityTrend === "declining"
+                      ? `Team productivity is ${insights.productivityTrend} (${insights.productivitySlope}% change rate). Adding 1 person: +${insights.addOnePersonSP} SP.`
+                      : `Team productivity is ${insights.productivityTrend} (${insights.productivitySlope}% change rate). Adding 1 person: +${insights.addOnePersonSP} SP.`
                   }
                 </p>
               </div>

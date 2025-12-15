@@ -74,7 +74,6 @@ const getFeatureContributions = (tickets: ParsedTicket[], assignee: string): Fea
     );
     
     if (!parentFeature) {
-      console.warn(`⚠️  FEATURE ${featureId} not found in tickets (user: ${assignee})`);
       return;
     }
     
@@ -109,7 +108,8 @@ const getFeatureContributions = (tickets: ParsedTicket[], assignee: string): Fea
 export const calculateAssigneeMetrics = (
   tickets: ParsedTicket[],
   assignee: string,
-  allTickets?: ParsedTicket[] // Optional: use for feature contributions to avoid filter impact
+  allTickets?: ParsedTicket[], // Optional: use for feature contributions to avoid filter impact
+  multiplier?: number // Optional: multiplier for performance calculations
 ): Omit<AssigneeMetrics, "zScore" | "performanceScore" | "utilizationIndex" | "flags"> => {
   const assigneeTickets = tickets.filter((t) => t.assignee === assignee);
   const closedTickets = assigneeTickets.filter((t) => t.status === "Closed");
@@ -135,9 +135,12 @@ export const calculateAssigneeMetrics = (
   const projectVariety = new Set(closedTickets.map(t => t.project)).size;
   
   // Calculate effective story points (penalized by revise rate)
+  // Then apply multiplier for performance/z-score calculations (NOT for utilization)
   const reviseRate = closedTickets.length > 0 ? reviseCountClosed / closedTickets.length : 0;
   const safeReviseRate = isNaN(reviseRate) || !isFinite(reviseRate) ? 0 : reviseRate;
-  const effectiveStoryPoints = totalClosedStoryPoints * (1 - safeReviseRate * 0.5);
+  const effectiveStoryPointsBase = totalClosedStoryPoints * (1 - safeReviseRate * 0.5);
+  // Apply multiplier for performance calculations (z-score, performance score)
+  const effectiveStoryPoints = effectiveStoryPointsBase * (multiplier || 1.0);
   const safeEffectiveSP = isNaN(effectiveStoryPoints) || !isFinite(effectiveStoryPoints) ? 0 : effectiveStoryPoints;
   
   // Calculate active weeks
@@ -147,10 +150,6 @@ export const calculateAssigneeMetrics = (
   const ticketsForFeatures = allTickets || tickets;
   const featureContributions = getFeatureContributions(ticketsForFeatures, assignee);
   const featureCount = featureContributions.length;
-  
-  if (featureContributions.length > 0) {
-    console.log(`${assignee}: featureCount=${featureCount}, contributions:`, featureContributions.map(f => f.featureName));
-  }
 
   const bugRateClosed = closedTickets.length > 0 ? bugCountClosed / closedTickets.length : 0;
   const reviseRateClosed = closedTickets.length > 0 ? reviseCountClosed / closedTickets.length : 0;
@@ -176,50 +175,96 @@ export const calculateAssigneeMetrics = (
 };
 
 /**
- * Calculate utilization index using improved methodology:
- * Option C: Capacity-Based with 90th Percentile
+ * NEW UTILIZATION CALCULATION - Config-Based Capacity
  * 
- * 1. Calculate average SP per sprint for each person
- * 2. Take 90th percentile (not max) as peak capacity per sprint
- * 3. Function baseline = MEDIAN of all 90th percentiles in function
- * 4. Utilization = (Average Sprint SP × Multiplier) / Function Baseline × 100%
+ * This calculation shows the REAL workload of each person based on their configured capacity.
+ * Goal: Help determine if someone is at full capacity or has room for more work.
+ * 
+ * Methodology:
+ * 1. Get person's configured capacity and metric from multiplier database
+ *    - Capacity: Max number for 100% utilization
+ *    - Metric: "sp" (story points) or "ticket" (ticket count)
+ * 2. Calculate their AVERAGE WORKLOAD per sprint
+ *    - If metric="sp": Average story points per sprint
+ *    - If metric="ticket": Average ticket count per sprint
+ * 3. Utilization = (Average Workload / Configured Capacity) × 100%
+ *    - <70%: Underutilized (has capacity for more work)
+ *    - 70-90%: Good utilization
+ *    - 90-100%: Fully utilized
+ *    - >100%: Overloaded (unsustainable)
+ * 
+ * Fallback: If no capacity configured, use historical peak capacity (95th percentile)
  */
 const calculateUtilizationIndex = (
   tickets: ParsedTicket[],
   assignee: string,
-  functionBaseline: number
+  functionBaseline: number, // Not used but kept for compatibility
+  multiplierEntry?: { capacity?: number; metric?: "sp" | "ticket" } // Optional multiplier entry with capacity/metric
 ): number => {
   const assigneeTickets = tickets.filter(
-    (t) => t.assignee === assignee && t.status === "Closed" && t.sprintClosed
+    (t) => t.assignee === assignee && t.status === "Closed" && t.sprintClosed && t.sprintClosed !== "#N/A"
   );
   
   if (assigneeTickets.length === 0) return 0;
   
-  // Group tickets by sprint and calculate SP per sprint
-  const sprintMap = new Map<string, number>();
+  // Determine metric type: "sp" (story points) or "ticket" (ticket count)
+  const metric = multiplierEntry?.metric || "sp"; // Default to "sp" if not specified
+  
+  // Group tickets by sprint and calculate workload per sprint
+  const sprintMap = new Map<string, { sp: number; tickets: number }>();
   assigneeTickets.forEach(ticket => {
     const sprint = ticket.sprintClosed;
-    sprintMap.set(sprint, (sprintMap.get(sprint) || 0) + ticket.storyPoints);
+    const current = sprintMap.get(sprint) || { sp: 0, tickets: 0 };
+    sprintMap.set(sprint, {
+      sp: current.sp + ticket.storyPoints,
+      tickets: current.tickets + 1
+    });
   });
   
   if (sprintMap.size === 0) return 0;
   
-  // Calculate average SP per sprint
-  const sprintTotals = Array.from(sprintMap.values());
-  const avgSprintSP = sprintTotals.length > 0 
-    ? sprintTotals.reduce((a, b) => a + b, 0) / sprintTotals.length 
-    : 0;
+  // Calculate workload based on metric type
+  const sprintWorkloads = Array.from(sprintMap.values()).map(entry => 
+    metric === "sp" ? entry.sp : entry.tickets
+  ).filter(w => w > 0).sort((a, b) => a - b);
   
-  // Get the assignee's multiplier (use first ticket's multiplier)
-  const multiplier = assigneeTickets[0]?.multiplier || 1.0;
+  if (sprintWorkloads.length === 0) return 0;
   
-  // Calculate utilization: (Average Sprint SP × Multiplier) / Function Baseline × 100%
-  if (functionBaseline === 0 || isNaN(functionBaseline) || !isFinite(functionBaseline)) return 0;
+  // Calculate AVERAGE WORKLOAD: mean workload per sprint
+  const avgWorkload = sprintWorkloads.reduce((a, b) => a + b, 0) / sprintWorkloads.length;
   
-  const utilization = (avgSprintSP * multiplier) / functionBaseline;
+  // Get configured capacity or fall back to historical peak capacity
+  let capacity: number;
   
-  // Return as percentage (can exceed 100% for over-utilized), guard against NaN
-  return isNaN(utilization) || !isFinite(utilization) ? 0 : utilization;
+  if (multiplierEntry?.capacity && multiplierEntry.capacity > 0) {
+    // Use configured capacity from multiplier database
+    capacity = multiplierEntry.capacity;
+  } else {
+    // Fallback: Calculate peak capacity from historical data
+    if (sprintWorkloads.length >= 5) {
+      // If 5+ sprints: use 95th percentile as peak capacity
+      const percentile95Index = Math.floor(sprintWorkloads.length * 0.95);
+      capacity = sprintWorkloads[Math.min(percentile95Index, sprintWorkloads.length - 1)];
+    } else if (sprintWorkloads.length >= 3) {
+      // If 3-4 sprints: use maximum as peak capacity
+      capacity = Math.max(...sprintWorkloads);
+    } else {
+      // If 1-2 sprints: use average * 1.3 as estimated peak capacity
+      capacity = avgWorkload * 1.3;
+    }
+    
+    // Ensure capacity is at least as high as average
+    capacity = Math.max(capacity, avgWorkload);
+  }
+  
+  if (capacity === 0 || isNaN(capacity) || !isFinite(capacity)) return 0;
+  
+  // Calculate utilization: Average Workload / Configured Capacity
+  const utilization = avgWorkload / capacity;
+  
+  // Return as ratio (will be displayed as percentage)
+  // Guard against unrealistic values
+  return isNaN(utilization) || !isFinite(utilization) ? 0 : Math.min(utilization, 2.0); // Cap at 200%
 };
 
 /**
@@ -275,7 +320,8 @@ const calculateFunctionBaseline = (
 export const calculateEnhancedMetrics = (
   metrics: Omit<AssigneeMetrics, "zScore" | "performanceScore" | "utilizationIndex" | "flags">[],
   thresholds: Thresholds,
-  tickets: ParsedTicket[] = []
+  tickets: ParsedTicket[] = [],
+  multiplierDB: Array<{ name: string; capacity?: number; metric?: "sp" | "ticket" }> = []
 ): AssigneeMetrics[] => {
   // Extract arrays for Z-score calculations
   const storyPoints = metrics.map((m) => m.effectiveStoryPoints);
@@ -298,11 +344,10 @@ export const calculateEnhancedMetrics = (
   
   // Calculate function baselines using 90th percentile methodology
   const functionBaselines = new Map<FunctionType, number>();
-  const FUNCTIONS: FunctionType[] = ["BE", "FE", "QA", "DESIGNER", "PRODUCT", "INFRA", "BUSINESS SUPPORT", "RESEARCHER", "FOUNDRY", "UX WRITER"];
+  const FUNCTIONS: FunctionType[] = ["BE", "FE", "QA", "DESIGNER", "PRODUCT", "INFRA", "OPERATION", "APPS", "BUSINESS SUPPORT", "RESEARCHER", "FOUNDRY", "UX WRITER", "ENGINEERING MANAGER"];
   FUNCTIONS.forEach(func => {
     const baseline = calculateFunctionBaseline(tickets, func);
     functionBaselines.set(func, baseline);
-    console.log(`📊 Function ${func} baseline: ${baseline.toFixed(2)} SP`);
   });
   
   // Keep function stats for backward compatibility with other features
@@ -326,12 +371,21 @@ export const calculateEnhancedMetrics = (
     const bugPenalty = Math.max(0.1, 1 - (m.bugRateClosed * (thresholds.bugRatePenalty || 0.5)));
     const performanceScore = isNaN(baseScore * revisePenalty * bugPenalty) ? 0 : baseScore * revisePenalty * bugPenalty;
     
-    // Calculate NEW utilization index using Option C methodology
-    // Utilization = (Average Sprint SP × Multiplier) / Function Baseline × 100%
+    // Calculate NEW individual capacity-based utilization index
+    // This shows real workload vs configured or historical capacity
     const functionBaseline = functionBaselines.get(m.function as FunctionType) || 1;
-    const utilizationIndex = calculateUtilizationIndex(tickets, m.assignee, functionBaseline);
     
-    console.log(`👤 ${m.assignee} (${m.function}): Utilization = ${(utilizationIndex * 100).toFixed(1)}%`);
+    // Find multiplier entry for this person to get capacity and metric
+    const multiplierEntry = multiplierDB.find(entry => 
+      entry.name.toLowerCase() === m.assignee.toLowerCase()
+    );
+    
+    const utilizationIndex = calculateUtilizationIndex(
+      tickets, 
+      m.assignee, 
+      functionBaseline,
+      multiplierEntry ? { capacity: multiplierEntry.capacity, metric: multiplierEntry.metric } : undefined
+    );
     
     // Determine flags based on function-relative performance and utilization
     const flags: string[] = [];
@@ -370,15 +424,18 @@ export const calculateEnhancedMetrics = (
     if (m.bugRateClosed > thresholds.highBugRate) flags.push("high_bug_rate");
     if (m.reviseRateClosed > thresholds.highReviseRate) flags.push("high_revise_rate");
     
-    // Enhanced underutilization detection
-    if (funcStats && 
-        m.effectiveStoryPoints < thresholds.underutilizedThreshold * funcStats.medianSP &&
-        m.activeWeeks < thresholds.activeWeeksThreshold * funcStats.avgActiveWeeks) {
+    // Enhanced underutilization detection based on NEW individual capacity model
+    // Flag as underutilized if working at <70% of their own demonstrated capacity
+    if (utilizationIndex < 0.7 && utilizationIndex > 0) {
       flags.push("underutilized");
     }
     
-    // Overload detection (high performance but high bug/revise rates)
-    if (performanceScore > 0.5 && (m.bugRateClosed > 0.2 || m.reviseRateClosed > 0.3)) {
+    // Overload detection based on NEW capacity model
+    // Flag as overloaded if working at >100% of their demonstrated peak capacity
+    // OR if utilization is high with quality issues
+    if (utilizationIndex > 1.0) {
+      flags.push("overloaded");
+    } else if (utilizationIndex > 0.9 && (m.bugRateClosed > 0.2 || m.reviseRateClosed > 0.3)) {
       flags.push("overloaded");
     }
 

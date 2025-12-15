@@ -17,18 +17,23 @@ import {
   Users, 
   BarChart3,
   Shield,
-  X
+  X,
+  Calculator
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { parseCSV } from "@/lib/csvParser";
 import { loadSampleData } from "@/lib/sampleData";
 import { fetchData, saveData as saveDataToAPI, clearData } from "@/lib/apiService";
 import { logout, isAuthenticated, getUserRole, verifySession } from "@/lib/serverAuth";
-import { Thresholds } from "@/types/openproject";
+import { Thresholds, MultiplierEntry, SprintConfig } from "@/types/openproject";
+import { parseMultiplierCSV, validateMultiplierDB, generateSampleMultipliers } from "@/lib/multiplierManager";
+import { generateSampleSprintConfigs } from "@/lib/sprintCalculator";
 
 export const Admin = () => {
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [tickets, setTickets] = useState<any[]>([]);
+  const [multipliers, setMultipliers] = useState<MultiplierEntry[]>([]);
+  const [sprintConfigs, setSprintConfigs] = useState<SprintConfig[]>([]);
   const [settings, setSettings] = useState<Thresholds>({
     topPerformerZ: 1.0,
     lowPerformerZ: -1.0,
@@ -65,6 +70,14 @@ export const Admin = () => {
         if (serverData.thresholds) {
           setSettings({ ...settings, ...serverData.thresholds });
         }
+        
+        if (serverData.multipliers && serverData.multipliers.length > 0) {
+          setMultipliers(serverData.multipliers);
+        }
+        
+        if (serverData.sprintConfigs && serverData.sprintConfigs.length > 0) {
+          setSprintConfigs(serverData.sprintConfigs);
+        }
       } catch (error) {
         console.error('Failed to load data from server:', error);
       }
@@ -77,24 +90,121 @@ export const Admin = () => {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    // Warn if no multiplier database uploaded
+    if (multipliers.length === 0) {
+      setMessage({ 
+        type: 'error', 
+        text: '⚠️ Please upload Multiplier Database first! Without it, all users will default to BE function with 1.0 multiplier.' 
+      });
+      // Allow upload but warn user
+    }
+
     setIsLoading(true);
     try {
       const text = await file.text();
-      const parsedTickets = parseCSV(text);
+      const parsedTickets = parseCSV(text, multipliers, sprintConfigs); // Use multiplier database and sprint configs
       setTickets(parsedTickets);
       
       // Save to server
       const result = await saveDataToAPI({ tickets: parsedTickets });
       if (result.success) {
+        const warningText = multipliers.length === 0 
+          ? ' ⚠️ Warning: No multiplier database - using defaults!'
+          : '';
         setMessage({ 
-          type: 'success', 
-          text: `🎉 Successfully uploaded ${parsedTickets.length} tickets to server!` 
+          type: multipliers.length === 0 ? 'error' : 'success', 
+          text: `🎉 Successfully uploaded ${parsedTickets.length} tickets to server!${warningText}` 
         });
       } else {
         setMessage({ type: 'error', text: result.message });
       }
     } catch (error) {
       setMessage({ type: 'error', text: 'Failed to parse CSV file' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleMultiplierUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsLoading(true);
+    try {
+      const text = await file.text();
+      const parsedMultipliers = parseMultiplierCSV(text);
+      
+      // Validate multiplier data
+      const validationErrors = validateMultiplierDB(parsedMultipliers);
+      if (validationErrors.length > 0) {
+        setMessage({ 
+          type: 'error', 
+          text: `Validation errors: ${validationErrors.join('; ')}` 
+        });
+        setIsLoading(false);
+        return;
+      }
+      
+      setMultipliers(parsedMultipliers);
+      
+      // Save to server
+      const result = await saveDataToAPI({ multipliers: parsedMultipliers });
+      if (result.success) {
+        setMessage({ 
+          type: 'success', 
+          text: `🎉 Successfully uploaded ${parsedMultipliers.length} multiplier entries to server!` 
+        });
+      } else {
+        setMessage({ type: 'error', text: result.message });
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Failed to parse multiplier CSV file' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleLoadSampleMultipliers = async () => {
+    setIsLoading(true);
+    try {
+      const sampleMultipliers = generateSampleMultipliers();
+      setMultipliers(sampleMultipliers);
+      
+      // Save to server
+      const result = await saveDataToAPI({ multipliers: sampleMultipliers });
+      if (result.success) {
+        setMessage({ 
+          type: 'success', 
+          text: `🎉 Loaded ${sampleMultipliers.length} sample multipliers to server!` 
+        });
+      } else {
+        setMessage({ type: 'error', text: result.message });
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Failed to load sample multipliers' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleLoadSampleSprintConfigs = async () => {
+    setIsLoading(true);
+    try {
+      const sampleConfigs = generateSampleSprintConfigs();
+      setSprintConfigs(sampleConfigs);
+      
+      // Save to server
+      const result = await saveDataToAPI({ sprintConfigs: sampleConfigs });
+      if (result.success) {
+        setMessage({ 
+          type: 'success', 
+          text: `🎉 Loaded ${sampleConfigs.length} sprint configurations to server!` 
+        });
+      } else {
+        setMessage({ type: 'error', text: result.message });
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Failed to load sample sprint configs' });
     } finally {
       setIsLoading(false);
     }
@@ -136,9 +246,14 @@ export const Admin = () => {
     }
   };
 
-  const handleLogout = () => {
-    logout();
-    window.location.href = '/';
+  const handleLogout = async () => {
+    try {
+      await logout();
+      window.location.href = '/';
+    } catch (error) {
+      // Even if logout fails, redirect to home
+      window.location.href = '/';
+    }
   };
 
   const handleClearData = async () => {
@@ -146,6 +261,8 @@ export const Admin = () => {
       const result = await clearData();
       if (result.success) {
         setTickets([]);
+        setMultipliers([]);
+        setSprintConfigs([]);
         setMessage({ type: 'success', text: '🎉 Data cleared from server successfully!' });
       } else {
         setMessage({ type: 'error', text: result.message });
@@ -229,15 +346,22 @@ export const Admin = () => {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <FileText className="h-5 w-5" />
-                  Data Management
+                  Ticket Data Upload
                 </CardTitle>
                 <CardDescription>
-                  Upload CSV files or load sample data
+                  Step 2: Upload ticket CSV after configuring multipliers
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                {multipliers.length === 0 && (
+                  <Alert variant="destructive">
+                    <AlertDescription>
+                      ⚠️ Upload Multiplier Database first! Without it, Function and Multiplier values will use defaults.
+                    </AlertDescription>
+                  </Alert>
+                )}
                 <div className="space-y-2">
-                  <Label htmlFor="csv-upload">Upload CSV File</Label>
+                  <Label htmlFor="csv-upload">Upload Ticket CSV</Label>
                   <Input
                     id="csv-upload"
                     type="file"
@@ -245,6 +369,9 @@ export const Admin = () => {
                     onChange={handleFileUpload}
                     disabled={isLoading}
                   />
+                  <p className="text-xs text-muted-foreground">
+                    CSV no longer needs Function or Multiplier columns - they'll be looked up from the database
+                  </p>
                 </div>
                 
                 <Separator />
@@ -272,6 +399,131 @@ export const Admin = () => {
                     <p className="text-sm text-muted-foreground">
                       {tickets.length} tickets loaded
                     </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          {/* Multiplier Database Management */}
+          <motion.div
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.15 }}
+          >
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Calculator className="h-5 w-5" />
+                  Multiplier Database
+                </CardTitle>
+                <CardDescription>
+                  Step 1: Upload multiplier config first (Name, Position, Formula)
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="multiplier-upload">Upload Multiplier CSV</Label>
+                  <Input
+                    id="multiplier-upload"
+                    type="file"
+                    accept=".csv"
+                    onChange={handleMultiplierUpload}
+                    disabled={isLoading}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Required columns: Nama/Name, Posisi/Position, Formula/Multiplier
+                  </p>
+                </div>
+                
+                <Separator />
+                
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium">Load Sample Multipliers</h4>
+                      <p className="text-sm text-muted-foreground">
+                        Use demo multipliers for testing
+                      </p>
+                    </div>
+                    <Button onClick={handleLoadSampleMultipliers} disabled={isLoading}>
+                      <Download className="h-4 w-4 mr-2" />
+                      Load Sample
+                    </Button>
+                  </div>
+                </div>
+
+                {multipliers.length > 0 && (
+                  <div className="p-4 bg-secondary/20 rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Badge variant="secondary">Multiplier Status</Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground mb-2">
+                      {multipliers.length} people configured
+                    </p>
+                    <div className="max-h-32 overflow-y-auto space-y-1">
+                      {multipliers.slice(0, 5).map((m, idx) => (
+                        <div key={idx} className="text-xs text-muted-foreground">
+                          {m.name} ({m.position}): {m.formula}x
+                        </div>
+                      ))}
+                      {multipliers.length > 5 && (
+                        <div className="text-xs text-muted-foreground italic">
+                          ... and {multipliers.length - 5} more
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          {/* Sprint Configuration */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+          >
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5" />
+                  Sprint Configuration
+                </CardTitle>
+                <CardDescription>
+                  Configure sprint dates for Orion, Threat Intel, and Aman
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium">Load 2025 Sprint Schedule</h4>
+                      <p className="text-sm text-muted-foreground">
+                        Loads actual sprint dates with +1 day tolerance
+                      </p>
+                    </div>
+                    <Button onClick={handleLoadSampleSprintConfigs} disabled={isLoading}>
+                      <Download className="h-4 w-4 mr-2" />
+                      Load Schedule
+                    </Button>
+                  </div>
+                </div>
+
+                {sprintConfigs.length > 0 && (
+                  <div className="p-4 bg-secondary/20 rounded-lg">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Badge variant="secondary">Sprint Config Status</Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground mb-2">
+                      {sprintConfigs.length} sprint periods configured
+                    </p>
+                    <div className="text-xs text-muted-foreground space-y-1">
+                      <div>• Sprint 01: 2025-01-08 to 2025-01-21</div>
+                      <div>• Sprint 25: 2025-12-24 to 2025-12-30</div>
+                      <div className="italic mt-2">+1 day tolerance for ticket completion</div>
+                    </div>
                   </div>
                 )}
               </CardContent>
