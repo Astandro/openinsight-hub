@@ -110,12 +110,15 @@ export const UtilizationTrendline = ({
   // Toggle between overall vs detailed view
   const [showDetailed, setShowDetailed] = useState(false);
   
+  // Track which series are selected (empty = show all)
+  const [selectedSeries, setSelectedSeries] = useState<Set<string>>(new Set());
+  
   // Real stats calculation
   const stats = useMemo(() => {
     const closedTickets = tickets.filter(
       t => t.status === "Closed" && 
            t.sprintClosed && 
-           t.sprintClosed !== "#N/A" && 
+            t.sprintClosed !== "#N/A" && 
            t.assignee !== "#N/A"
     );
     
@@ -241,19 +244,19 @@ export const UtilizationTrendline = ({
     
     if (closedTickets.length === 0) return [];
     
-    // Group by sprint
-    const sprintMap = new Map<string, ParsedTicket[]>();
-    closedTickets.forEach(ticket => {
+      // Group by sprint
+      const sprintMap = new Map<string, ParsedTicket[]>();
+      closedTickets.forEach(ticket => {
       const sprint = ticket.sprintClosed;
       if (!sprintMap.has(sprint)) {
         sprintMap.set(sprint, []);
       }
       sprintMap.get(sprint)!.push(ticket);
-    });
-    
-    // Sort sprints
-    const sortedSprints = Array.from(sprintMap.keys()).sort();
-    
+      });
+      
+      // Sort sprints
+      const sortedSprints = Array.from(sprintMap.keys()).sort();
+      
     if (!showDetailed) {
       // Overall view - single average line
       return sortedSprints.map(sprint => {
@@ -388,10 +391,25 @@ export const UtilizationTrendline = ({
     "#8b5cf6", "#3b82f6", "#10b981", "#f59e0b", "#ef4444",
     "#ec4899", "#14b8a6", "#f97316", "#6366f1", "#a855f7",
   ];
-
-  return (
-    <Card>
-      <CardHeader>
+  
+  // Toggle series selection
+  const toggleSeries = (seriesName: string) => {
+    setSelectedSeries(prev => {
+      const newSet = new Set(prev);
+      
+      // If clicking on already selected item (and it's the only one), clear selection (show all)
+      if (newSet.has(seriesName) && newSet.size === 1) {
+        return new Set();
+      }
+      
+      // If clicking on a new item, show only that one
+      return new Set([seriesName]);
+    });
+  };
+  
+    return (
+      <Card>
+        <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
             <TrendingUp className="h-5 w-5" />
@@ -420,8 +438,8 @@ export const UtilizationTrendline = ({
             </Button>
           </div>
         </div>
-      </CardHeader>
-      <CardContent>
+        </CardHeader>
+        <CardContent>
         {/* Summary Cards - Simple and Clean */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
           {/* Card 1: Hiring Recommendation */}
@@ -467,14 +485,14 @@ export const UtilizationTrendline = ({
                   </p>
                 </div>
                 <TrendingUp className="h-8 w-8 text-blue-600" />
-              </div>
-            </CardContent>
-          </Card>
+          </div>
+        </CardContent>
+      </Card>
 
           {/* Card 3: Team Status */}
           <Card className="bg-green-50 dark:bg-green-900/20">
             <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600 mb-1">Team Status</p>
                   <p className="text-lg font-bold text-green-600">
@@ -496,47 +514,82 @@ export const UtilizationTrendline = ({
               </div>
             </CardContent>
           </Card>
-        </div>
+            </div>
+            
+            {/* Interactive Legend */}
+        <div className="flex flex-wrap gap-2 mb-4">
+              {seriesNames.map((name, index) => {
+            const isSelected = selectedSeries.size === 0 || selectedSeries.has(name);
+                const color = colors[index % colors.length];
+                
+                return (
+              <button
+                    key={name}
+                    onClick={() => toggleSeries(name)}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-full border-2 transition-all ${
+                  isSelected
+                    ? "bg-white dark:bg-gray-900 border-current shadow-sm hover:shadow-md"
+                    : "bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-700 opacity-50"
+                    }`}
+                    style={{
+                  borderColor: isSelected ? color : undefined,
+                    }}
+                  >
+                    <div
+                  className="w-3 h-3 rounded-full"
+                      style={{
+                    backgroundColor: isSelected ? color : "#9ca3af",
+                      }}
+                    />
+                <span className={`text-sm font-medium ${isSelected ? "text-gray-700 dark:text-gray-300" : "text-gray-400"}`}>
+                      {name}
+                    </span>
+              </button>
+                );
+              })}
+            </div>
 
         {/* Chart */}
         <ResponsiveContainer width="100%" height={350}>
           <LineChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis 
+              <XAxis
               dataKey="sprint" 
               style={{ fontSize: "12px" }}
-            />
-            <YAxis 
+              />
+              <YAxis
               label={{ value: 'Utilization (%)', angle: -90, position: 'insideLeft' }}
               style={{ fontSize: "12px" }}
-            />
-            <Tooltip 
-              contentStyle={{
+              />
+              <Tooltip
+                contentStyle={{
                 backgroundColor: "rgba(17, 24, 39, 0.95)",
                 border: "1px solid #374151",
                 borderRadius: "8px",
               }}
             />
-            <Legend 
-              wrapperStyle={{ paddingTop: "10px" }}
-            />
             
-            {/* Render lines based on view mode */}
-            {seriesNames.map((name, index) => (
-              <Line
-                key={name}
-                type="monotone"
-                dataKey={name}
-                stroke={colors[index % colors.length]}
-                strokeWidth={showDetailed ? 2 : 3}
-                dot={{ r: showDetailed ? 3 : 4 }}
-                activeDot={{ r: showDetailed ? 5 : 6 }}
-                name={name}
-              />
-            ))}
-          </LineChart>
-        </ResponsiveContainer>
-      </CardContent>
-    </Card>
+            {/* Render lines based on view mode and visibility */}
+              {seriesNames.map((name, index) => {
+              const isVisible = selectedSeries.size === 0 || selectedSeries.has(name);
+                
+                return (
+                  <Line
+                    key={name}
+                    type="monotone"
+                    dataKey={name}
+                    stroke={colors[index % colors.length]}
+                  strokeWidth={showDetailed ? 2 : 3}
+                  dot={{ r: showDetailed ? 3 : 4 }}
+                  activeDot={{ r: showDetailed ? 5 : 6 }}
+                  name={name}
+                  hide={!isVisible}
+                  />
+                );
+              })}
+            </LineChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
   );
 };
