@@ -13,13 +13,26 @@ export const parseCSV = (
     skipEmptyLines: true,
   });
   
+  // Log first row to see available columns - ONLY ONCE
+  if (results.data.length > 0) {
+    console.log("📋 CSV loaded:", Object.keys(results.data[0]).length, "columns,", results.data.length, "rows");
+  }
+  
   const tickets = results.data.map((row) => parseRow(row, multiplierDB, sprintConfigs));
-  return tickets.filter((t) => t !== null) as ParsedTicket[];
+  const parsed = tickets.filter((t) => t !== null) as ParsedTicket[];
+  
+  // Summary only
+  const features = parsed.filter(t => t.normalizedType === "Feature");
+  const childTickets = parsed.filter(t => t.parentId);
+  
+  console.log(`\n📊 Parsed ${features.length} features, ${childTickets.length} children (${parsed.length} total)\n`);
+  
+  return parsed;
 };
 
 const normalizeType = (type: string): "Feature" | "Bug" | "Regression" | "Improvement" | "Release" | "Task" | "Other" => {
   const lower = type.toLowerCase();
-  if (lower === "feature") return "Feature";
+  if (lower === "feature" || lower === "epic") return "Feature"; // Treat Epic as Feature
   if (lower === "bug" || lower.includes("bug")) return "Bug";
   if (lower === "regression") return "Regression";
   if (lower === "improvement") return "Improvement";
@@ -36,22 +49,50 @@ const parseRow = (
   try {
     const storyPoints = parseInt(row["Story Points"] || "0", 10) || 0;
     const createdDate = new Date(row["Created At"]);
-    const closedDate = row["Updated At"] ? new Date(row["Updated At"]) : null;
     const project = row.Project || "Unknown";
     const assigneeName = row.Assignee || "Unassigned";
     
-    // Parse start date and due date for date-based sprint calculation
-    const startDate = parseDate(row["Start Date"]);
-    const dueDate = parseDate(row["Due Date"] || row["Finish Date"] || row["End Date"]);
+    // Parse dates from CSV
+    const csvStartDate = parseDate(row["Start Date"]);
+    const csvDueDate = parseDate(row["Due Date"] || row["Finish Date"] || row["End Date"]);
+    const updatedAt = parseDate(row["Updated At"]);
+    const status = row.Status || "";
+    const isClosed = status.toLowerCase() === "closed";
+    
+    // Apply user's date logic:
+    // Start date = LATEST between Start Date and Created At (when work actually started)
+    let startDate = createdDate; // Default to Created At
+    if (csvStartDate && csvStartDate > createdDate) {
+      startDate = csvStartDate; // Use Start Date if it's later
+    }
+    
+    // Closed date logic:
+    // - For CLOSED tickets: Use EARLIEST between Due Date and Updated At
+    // - For IN-PROGRESS tickets: Use Due Date only (Updated At is not completion date)
+    let closedDate: Date | null = null;
+    if (isClosed) {
+      // Ticket is closed, use actual completion date
+      if (csvDueDate && updatedAt) {
+        closedDate = csvDueDate < updatedAt ? csvDueDate : updatedAt;
+      } else if (updatedAt) {
+        closedDate = updatedAt;
+      } else if (csvDueDate) {
+        closedDate = csvDueDate;
+      }
+    } else {
+      // Ticket is not closed, use planned/due date only
+      if (csvDueDate) {
+        closedDate = csvDueDate;
+      }
+    }
     
     // Determine sprint assignment method based on project
     let sprintCreated: string;
     let sprintClosed: string;
     
-    if (usesDateBasedSprints(project) && (startDate || dueDate || closedDate)) {
+    if (usesDateBasedSprints(project) && (startDate || csvDueDate || closedDate)) {
       // Use date-based sprint calculation for Orion, Threat Intel, and Aman
-      // Pass closedDate for +1 day tolerance
-      const sprints = calculateSprintRange(startDate, dueDate, closedDate, project, sprintConfigs);
+      const sprints = calculateSprintRange(startDate, csvDueDate, closedDate, project, sprintConfigs);
       sprintCreated = sprints.sprintCreated;
       sprintClosed = sprints.sprintClosed;
     } else {
@@ -117,55 +158,61 @@ const parseRow = (
     const isBug = normalizedType === "Bug" || type.toLowerCase().includes("bug");
 
     // Generate a unique ID based on the hierarchy:
-    // - Row with Type="Feature" AND has Parent value → This is the PARENT feature, use Parent as its ID
-    // - Row with Type="User story"/"Bug"/etc AND has Parent value → These are CHILDREN, Parent is their parentId
+    // - Row with Type="Feature" → Use ID column as its ID (this is the parent feature)
+    // - Row with Type="User story"/"Bug"/etc → Child ticket, Parent column is parentId
     const title = row.Subject || "";
     let id: string;
     let parentId: string | undefined = undefined;
     
-    if (!row.Parent) {
-      // No parent - this is an independent ticket
-      id = `TICKET-${Math.random().toString(36).substr(2, 9)}`;
-      parentId = undefined;
+    if (normalizedType === "Feature") {
+      // This row IS a FEATURE - use ID column or generate if not available
+      id = row.ID || `FEATURE-${Math.random().toString(36).substr(2, 9)}`;
+      parentId = undefined; // Features don't have parents
+    } else if (row.Parent) {
+      // This is a child ticket (User Story, Bug, etc.) with a parent feature
+      // Parent column contains the parent feature ID directly
+      id = row.ID || `${row.Parent}-${type.toUpperCase()}-${Math.random().toString(36).substr(2, 6)}`;
+      parentId = row.Parent; // Use Parent column as-is
     } else {
-      // Has a parent value in CSV
-      if (normalizedType === "Feature") {
-        // This row IS the top-level FEATURE - use Parent column value as its ID
-        id = row.Parent;
-        parentId = undefined; // It IS the parent, so no parentId
-      } else {
-        // This is a child ticket (User Story, Bug, etc.) - generate unique ID
-        id = `${row.Parent}-${type.toUpperCase()}-${Math.random().toString(36).substr(2, 6)}`;
-        parentId = row.Parent; // Parent column value is its parentId
-      }
+      // No parent - this is an independent ticket
+      id = row.ID || `TICKET-${Math.random().toString(36).substr(2, 9)}`;
+      parentId = undefined;
     }
 
     // Get function AND multiplier from database
     // Priority: 1. Multiplier Database, 2. CSV columns, 3. Skip (warn user)
+    // EXCEPTION: Feature tickets don't require assignee validation
     let personFunction: FunctionType | undefined;
     let multiplier = 1.0;
     
-    // Try to find person in multiplier database first
-    const multiplierEntry = multiplierDB.length > 0 
-      ? getMultiplierEntryByName(assigneeName, multiplierDB)
-      : null;
-    
-    if (multiplierEntry) {
-      // Found in database - use database values
-      personFunction = multiplierEntry.position;
-      multiplier = multiplierEntry.formula;
-    } else if (row.Function) {
-      // Not in database but has Function in CSV - use that as fallback
-      personFunction = row.Function;
-      multiplier = row.Multiplier ? parseFloat(row.Multiplier) : 1.0;
+    // Feature tickets: Don't require assignee validation, use default values
+    if (normalizedType === "Feature") {
+      personFunction = "PRODUCT"; // Default for features
+      multiplier = 1.0;
     } else {
-      // Not in database AND no Function in CSV - this person is not properly configured
-      // Skip this ticket or log warning
-      if (multiplierDB.length > 0) {
-        // Only warn if multiplier DB exists but person not found
-        console.warn(`⚠️ "${assigneeName}" not found in multiplier database and no Function in CSV. Skipping ticket.`);
+      // Non-feature tickets: Require assignee validation
+      // Try to find person in multiplier database first
+      const multiplierEntry = multiplierDB.length > 0 
+        ? getMultiplierEntryByName(assigneeName, multiplierDB)
+        : null;
+      
+      if (multiplierEntry) {
+        // Found in database - use database values
+        personFunction = multiplierEntry.position;
+        multiplier = multiplierEntry.formula;
+      } else if (row.Function) {
+        // Not in database but has Function in CSV - use that as fallback
+        personFunction = row.Function;
+        multiplier = row.Multiplier ? parseFloat(row.Multiplier) : 1.0;
+      } else {
+        // Not in database AND no Function in CSV - this person is not properly configured
+        // Skip this ticket or log warning
+        if (multiplierDB.length > 0) {
+          // Only warn if multiplier DB exists but person not found
+          console.warn(`⚠️ "${assigneeName}" not found in multiplier database and no Function in CSV. Skipping ticket ID: ${row.ID}, Type: ${normalizedType}, Subject: ${subject.substring(0, 40)}`);
+        }
+        return null; // Skip this ticket
       }
-      return null; // Skip this ticket
     }
 
     const ticket = {

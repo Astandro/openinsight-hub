@@ -251,10 +251,12 @@ export const FeatureTimeline = ({ tickets, filters }: FeatureTimelineProps) => {
     
     // Step 3: Get ALL FEATURE-level tickets that have filtered children
     // Also apply project filter to features if set
+    // NOTE: Don't require closedDate for features - they're containers, not work items
     const relevantFeatures = tickets.filter(t => {
-      const isFeature = t.normalizedType === "Feature" && !t.parentId && t.closedDate;
+      const isFeature = t.normalizedType === "Feature" && !t.parentId;
       const hasFilteredChildren = featuresWithFilteredChildren.has(t.id);
       const matchesProject = !filters.selectedProject || t.project === filters.selectedProject;
+      
       return isFeature && hasFilteredChildren && matchesProject;
     });
     
@@ -269,11 +271,13 @@ export const FeatureTimeline = ({ tickets, filters }: FeatureTimelineProps) => {
         if (feature.createdDate < existing.startDate) {
           existing.startDate = feature.createdDate;
         }
-        if (feature.closedDate! > existing.endDate) {
-          existing.endDate = feature.closedDate!;
+        const featureEndDate = feature.closedDate || feature.createdDate;
+        if (featureEndDate > existing.endDate) {
+          existing.endDate = featureEndDate;
         }
       } else {
         // Create new entry
+        // Use closedDate if available, otherwise use createdDate as placeholder
         featureMap.set(featureName, {
           id: feature.id,
           title: featureName,
@@ -282,7 +286,7 @@ export const FeatureTimeline = ({ tickets, filters }: FeatureTimelineProps) => {
           project: feature.project,
           totalStoryPoints: 0, // Will calculate from children only
           startDate: feature.createdDate,
-          endDate: feature.closedDate!,
+          endDate: feature.closedDate || feature.createdDate, // Fallback if no closedDate
           duration: 0,
           ticketCount: 0, // Will count children only
         });
@@ -324,7 +328,7 @@ export const FeatureTimeline = ({ tickets, filters }: FeatureTimelineProps) => {
         if (ticket.createdDate < featureEntry.startDate) {
           featureEntry.startDate = ticket.createdDate;
         }
-        if (ticket.closedDate > featureEntry.endDate) {
+        if (ticket.closedDate && ticket.closedDate > featureEntry.endDate) {
           featureEntry.endDate = ticket.closedDate;
         }
       }

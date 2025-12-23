@@ -21,8 +21,8 @@ export const usesDateBasedSprints = (projectName: string): boolean => {
 
 /**
  * Calculate sprint number based on start date and due date
- * Uses sprint configurations if available, with +1 day tolerance
- * Tolerance: If ticket closedDate is <= endDate + 1 day, count it in that sprint
+ * Uses sprint configurations if available
+ * Sprint dates are pre-adjusted with +1 day tolerance from original schedule
  */
 export const calculateSprintFromDates = (
   startDate: Date | null,
@@ -54,36 +54,47 @@ export const calculateSprintFromDates = (
     // Sort configs by sprint number to process in order
     const sortedConfigs = [...projectConfigs].sort((a, b) => a.sprintNumber - b.sprintNumber);
     
-    // Find which sprint the reference date falls into (with +1 day tolerance)
+    // Find which sprint the reference date falls into
+    // Sprint dates are already adjusted with +1 day tolerance built in
     for (const config of sortedConfigs) {
       const configStart = new Date(config.startDate);
       const configEnd = new Date(config.endDate);
-      
-      // Add +1 day tolerance to end date
-      // If ticket closed <= endDate + 1 day, count it in this sprint (not carry over)
-      const configEndWithTolerance = new Date(configEnd);
-      configEndWithTolerance.setDate(configEndWithTolerance.getDate() + 1);
 
-      if (referenceDate >= configStart && referenceDate <= configEndWithTolerance) {
+      if (referenceDate >= configStart && referenceDate <= configEnd) {
         return `Sprint ${String(config.sprintNumber).padStart(2, '0')}`; // Format as "Sprint 01"
       }
     }
+    
+    // If date is AFTER the last configured sprint, assign to the last sprint (future work)
+    const lastConfig = sortedConfigs[sortedConfigs.length - 1];
+    if (referenceDate > new Date(lastConfig.endDate)) {
+      return `Sprint ${String(lastConfig.sprintNumber).padStart(2, '0')}`;
+    }
+    
+    // If date is BEFORE the first configured sprint, return N/A
+    const firstConfig = sortedConfigs[0];
+    if (referenceDate < new Date(firstConfig.startDate)) {
+      return "#N/A";
+    }
   }
 
-  // Fallback: Calculate sprint based on 2-week cycles from a reference date
-  // Using the year's start date to ensure sprints stay within reasonable bounds
-  const year = referenceDate.getFullYear();
-  const yearStart = new Date(year, 0, 1); // January 1st of the ticket's year
-  
-  const daysSinceYearStart = Math.floor(
-    (referenceDate.getTime() - yearStart.getTime()) / (1000 * 60 * 60 * 24)
-  );
-  
-  // Calculate sprint number (2-week cycles = 14 days)
-  // Max 26 sprints per year (52 weeks / 2)
-  const sprintNumber = Math.min(Math.floor(daysSinceYearStart / 14) + 1, 26);
+  // Fallback ONLY for projects without sprint configs
+  // (Don't use fallback if configs exist but date doesn't match)
+  if (projectConfigs.length === 0) {
+    // Calculate sprint based on 2-week cycles from a reference date
+    const year = referenceDate.getFullYear();
+    const yearStart = new Date(year, 0, 1);
+    
+    const daysSinceYearStart = Math.floor(
+      (referenceDate.getTime() - yearStart.getTime()) / (1000 * 60 * 60 * 24)
+    );
+    
+    // Calculate sprint number (2-week cycles = 14 days), max 26 per year
+    const sprintNumber = Math.min(Math.floor(daysSinceYearStart / 14) + 1, 26);
+    return `Sprint ${String(sprintNumber).padStart(2, '0')}`;
+  }
 
-  return `Sprint ${String(sprintNumber).padStart(2, '0')}`; // Format as "Sprint 01"
+  return "#N/A";
 };
 
 /**
@@ -118,6 +129,26 @@ export const parseDate = (dateStr: string | undefined | null): Date | null => {
   try {
     const date = new Date(dateStr);
     if (!isNaN(date.getTime())) {
+      // Validate that the date didn't overflow (e.g., 2025-12-43 becomes 2026-01-12)
+      // Check if the parsed date matches the input format
+      const dateStrNormalized = dateStr.trim();
+      
+      // If input looks like YYYY-MM-DD format, validate day is correct
+      if (dateStrNormalized.match(/^\d{4}-\d{2}-\d{2}/)) {
+        const parts = dateStrNormalized.split('-');
+        const inputYear = parseInt(parts[0], 10);
+        const inputMonth = parseInt(parts[1], 10);
+        const inputDay = parseInt(parts[2].substring(0, 2), 10); // Take first 2 digits
+        
+        // Check if parsed date matches input (catches overflow like Dec 43 -> Jan 12)
+        if (date.getFullYear() !== inputYear || 
+            date.getMonth() + 1 !== inputMonth || 
+            date.getDate() !== inputDay) {
+          console.warn(`⚠️ Invalid date detected (overflow): "${dateStr}" -> parsed as ${date.toISOString().split('T')[0]}`);
+          return null; // Reject invalid dates
+        }
+      }
+      
       return date;
     }
   } catch (e) {
@@ -129,39 +160,41 @@ export const parseDate = (dateStr: string | undefined | null): Date | null => {
 
 /**
  * Generate sprint configurations based on actual 2025 schedule
- * Sprint 01 starts 2025-01-08, Sprint 25 ends 2025-12-30
+ * Sprint dates are adjusted +1 day from original schedule
+ * Sprint 01 starts 2025-01-09, Sprint 25 ends 2026-01-06
  */
 export const generateSampleSprintConfigs = (): SprintConfig[] => {
   const configs: SprintConfig[] = [];
   const projects = ["Orion", "Threat Intel", "Aman"];
   
-  // Exact sprint schedule from 2025
+  // Exact sprint schedule from 2025 (with +1 day adjustment)
+  // Original dates + 1 day for both start and end
   const sprintDates = [
-    { sprint: 1, start: "2025-01-08", end: "2025-01-21" },
-    { sprint: 2, start: "2025-01-22", end: "2025-02-04" },
-    { sprint: 3, start: "2025-02-05", end: "2025-02-25" },
-    { sprint: 4, start: "2025-02-26", end: "2025-03-11" },
-    { sprint: 5, start: "2025-03-12", end: "2025-03-25" },
-    { sprint: 6, start: "2025-03-26", end: "2025-04-15" },
-    { sprint: 7, start: "2025-04-16", end: "2025-04-29" },
-    { sprint: 8, start: "2025-04-30", end: "2025-05-13" },
-    { sprint: 9, start: "2025-05-14", end: "2025-05-27" },
-    { sprint: 10, start: "2025-05-28", end: "2025-06-10" },
-    { sprint: 11, start: "2025-06-11", end: "2025-06-24" },
-    { sprint: 12, start: "2025-06-25", end: "2025-07-08" },
-    { sprint: 13, start: "2025-07-09", end: "2025-07-22" },
-    { sprint: 14, start: "2025-07-23", end: "2025-08-05" },
-    { sprint: 15, start: "2025-08-06", end: "2025-08-19" },
-    { sprint: 16, start: "2025-08-20", end: "2025-09-02" },
-    { sprint: 17, start: "2025-09-03", end: "2025-09-16" },
-    { sprint: 18, start: "2025-09-17", end: "2025-09-30" },
-    { sprint: 19, start: "2025-10-01", end: "2025-10-14" },
-    { sprint: 20, start: "2025-10-15", end: "2025-10-28" },
-    { sprint: 21, start: "2025-10-29", end: "2025-11-11" },
-    { sprint: 22, start: "2025-11-12", end: "2025-11-25" },
-    { sprint: 23, start: "2025-11-26", end: "2025-12-09" },
-    { sprint: 24, start: "2025-12-10", end: "2025-12-23" },
-    { sprint: 25, start: "2025-12-24", end: "2025-12-30" },
+    { sprint: 1, start: "2025-01-09", end: "2025-01-22" },
+    { sprint: 2, start: "2025-01-23", end: "2025-02-05" },
+    { sprint: 3, start: "2025-02-06", end: "2025-02-26" },
+    { sprint: 4, start: "2025-02-27", end: "2025-03-12" },
+    { sprint: 5, start: "2025-03-13", end: "2025-03-26" },
+    { sprint: 6, start: "2025-03-27", end: "2025-04-16" },
+    { sprint: 7, start: "2025-04-17", end: "2025-04-30" },
+    { sprint: 8, start: "2025-05-01", end: "2025-05-14" },
+    { sprint: 9, start: "2025-05-15", end: "2025-05-28" },
+    { sprint: 10, start: "2025-05-29", end: "2025-06-11" },
+    { sprint: 11, start: "2025-06-12", end: "2025-06-25" },
+    { sprint: 12, start: "2025-06-26", end: "2025-07-09" },
+    { sprint: 13, start: "2025-07-10", end: "2025-07-23" },
+    { sprint: 14, start: "2025-07-24", end: "2025-08-06" },
+    { sprint: 15, start: "2025-08-07", end: "2025-08-20" },
+    { sprint: 16, start: "2025-08-21", end: "2025-09-03" },
+    { sprint: 17, start: "2025-09-04", end: "2025-09-17" },
+    { sprint: 18, start: "2025-09-18", end: "2025-10-01" },
+    { sprint: 19, start: "2025-10-02", end: "2025-10-15" },
+    { sprint: 20, start: "2025-10-16", end: "2025-10-29" },
+    { sprint: 21, start: "2025-10-30", end: "2025-11-12" },
+    { sprint: 22, start: "2025-11-13", end: "2025-11-26" },
+    { sprint: 23, start: "2025-11-27", end: "2025-12-10" },
+    { sprint: 24, start: "2025-12-11", end: "2025-12-24" },
+    { sprint: 25, start: "2025-12-25", end: "2026-01-06" },
   ];
 
   projects.forEach((project) => {
