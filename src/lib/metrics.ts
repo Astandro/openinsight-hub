@@ -534,12 +534,30 @@ export const applyFilters = (tickets: ParsedTicket[], filters: any): ParsedTicke
   }
 
   if (filters.timePeriod !== "all") {
-    // Get the year from the actual data instead of current year
-    // Use original tickets array to find the most recent year, not filtered
+    // Get the year with the most tickets (not just max year)
+    // This prevents issues when a few tickets spill into next year
     const ticketsWithDates = tickets.filter(t => t.closedDate);
-    const dataYear = ticketsWithDates.length > 0
-      ? Math.max(...ticketsWithDates.map(t => t.closedDate!.getFullYear()))
-      : new Date().getFullYear();
+    
+    if (ticketsWithDates.length === 0) {
+      return filtered;
+    }
+    
+    // Count tickets by year
+    const yearCounts = new Map<number, number>();
+    ticketsWithDates.forEach(t => {
+      const year = t.closedDate!.getFullYear();
+      yearCounts.set(year, (yearCounts.get(year) || 0) + 1);
+    });
+    
+    // Find year with most tickets (2025 has 11,730 vs 2026's 333)
+    let dataYear = new Date().getFullYear();
+    let maxCount = 0;
+    yearCounts.forEach((count, year) => {
+      if (count > maxCount) {
+        maxCount = count;
+        dataYear = year;
+      }
+    });
     
     let startDate: Date;
     let endDate: Date;
