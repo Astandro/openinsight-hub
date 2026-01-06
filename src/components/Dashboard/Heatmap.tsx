@@ -1,9 +1,4 @@
 import { Card } from "@/components/ui/card";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { ParsedTicket } from "@/types/openproject";
-import { useState } from "react";
 
 export interface HeatmapDatum {
   row: string; // e.g., project or assignee
@@ -27,13 +22,10 @@ function valueToColor(value: number, maxValue: number) {
 export function Heatmap({
   data,
   title = "Activity Heatmap",
-  tickets,
 }: {
   data: HeatmapDatum[];
   title?: string;
-  tickets?: ParsedTicket[];
 }) {
-  const [selectedCell, setSelectedCell] = useState<{ row: string; col: string } | null>(null);
   const rows = Array.from(new Set(data.map((d) => d.row)));
   const cols = Array.from(new Set(data.map((d) => d.col)));
   const matrix = rows.map((r) =>
@@ -69,103 +61,14 @@ export function Heatmap({
               <div key={`row-${r}`} className="pr-2 py-1 text-xs text-muted-foreground whitespace-nowrap flex items-center">
                 {r}
               </div>
-              {matrix[i].map((val, j) => {
-                const project = r;
-                const sprint = cols[j];
-                const cellTickets = tickets?.filter(
-                  (t) => t.project === project && t.sprintClosed === sprint && t.status === "Closed"
-                ) || [];
-                
-                // Get unique features from tickets
-                const featureIds = new Set(cellTickets.map(t => t.parentId).filter(Boolean));
-                const features = Array.from(featureIds).map(featureId => {
-                  const featureTicket = tickets?.find(t => t.id === featureId && t.normalizedType === "Feature");
-                  const childTickets = cellTickets.filter(t => t.parentId === featureId);
-                  const featureSP = childTickets.reduce((sum, t) => sum + t.storyPoints, 0);
-                  return {
-                    id: featureId!,
-                    title: featureTicket?.title || `Feature ${featureId}`,
-                    storyPoints: featureSP,
-                    ticketCount: childTickets.length
-                  };
-                }).sort((a, b) => b.storyPoints - a.storyPoints);
-
-                return (
-                  <Popover key={`cell-${i}-${j}`}>
-                    <PopoverTrigger asChild>
-                      <div
-                        className="m-0.5 h-10 rounded-md border border-border transition-all duration-200 hover:border-ring hover:scale-105 cursor-pointer"
-                        style={{ backgroundColor: valueToColor(val, maxValue) }}
-                        onClick={() => setSelectedCell({ row: project, col: sprint })}
-                      />
-                    </PopoverTrigger>
-                    {cellTickets.length > 0 && (
-                      <PopoverContent className="w-[500px]" align="start">
-                        <div className="space-y-3">
-                          {/* Header */}
-                          <div>
-                            <h4 className="font-semibold text-lg">{project}</h4>
-                            <div className="flex items-center gap-2 mt-1">
-                              <Badge variant="outline">{sprint}</Badge>
-                              <span className="text-sm text-muted-foreground">
-                                {val} SP · {cellTickets.length} tickets
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Features List */}
-                          {features.length > 0 && (
-                            <div>
-                              <div className="text-xs font-medium text-muted-foreground mb-2">
-                                Features ({features.length})
-                              </div>
-                              <ScrollArea className="h-[300px] pr-3">
-                                <div className="space-y-2">
-                                  {features.map((feature, idx) => (
-                                    <div
-                                      key={feature.id}
-                                      className="p-2 rounded-lg bg-secondary/30 hover:bg-secondary/50 transition-colors"
-                                    >
-                                      <div className="flex items-start justify-between gap-2">
-                                        <div className="flex-1 min-w-0">
-                                          <div className="text-xs font-mono text-primary">#{feature.id}</div>
-                                          <div className="text-sm font-medium mt-0.5 truncate" title={feature.title}>
-                                            {feature.title}
-                                          </div>
-                                        </div>
-                                        <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                                          <Badge variant="secondary" className="text-xs">
-                                            {feature.storyPoints} SP
-                                          </Badge>
-                                          <span className="text-xs text-muted-foreground">
-                                            {feature.ticketCount} tickets
-                                          </span>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              </ScrollArea>
-                            </div>
-                          )}
-
-                          {/* Tickets without parent */}
-                          {cellTickets.some(t => !t.parentId) && (
-                            <div>
-                              <div className="text-xs font-medium text-muted-foreground mb-2">
-                                Standalone Tickets ({cellTickets.filter(t => !t.parentId).length})
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                {cellTickets.filter(t => !t.parentId).reduce((sum, t) => sum + t.storyPoints, 0)} SP from tickets without features
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </PopoverContent>
-                    )}
-                  </Popover>
-                );
-              })}
+              {matrix[i].map((val, j) => (
+                <div
+                  key={`cell-${i}-${j}`}
+                  className="m-0.5 h-10 rounded-md border border-border transition-colors duration-300 hover:border-ring"
+                  style={{ backgroundColor: valueToColor(val, maxValue) }}
+                  title={`${r} · ${cols[j]}: ${val}`}
+                />
+              ))}
             </>
           ))}
         </div>

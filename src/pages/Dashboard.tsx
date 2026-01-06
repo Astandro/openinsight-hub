@@ -3,7 +3,6 @@ import { parseCSV } from "@/lib/csvParser";
 import { loadSampleData } from "@/lib/sampleData";
 import { calculateAssigneeMetrics, calculateEnhancedMetrics, calculateFunctionMetrics, applyFilters } from "@/lib/metrics";
 import { ParsedTicket, Filters, FunctionType, Thresholds } from "@/types/openproject";
-import { generateSampleSprintConfigs } from "@/lib/sprintCalculator";
 // Removed localStorage threshold imports - now using server-based thresholds
 import { generateAlerts } from "@/lib/alerts";
 import { FUNCTIONS } from "@/lib/constants";
@@ -36,16 +35,6 @@ const Dashboard = () => {
   const [tickets, setTickets] = useState<ParsedTicket[]>([]);
   const [multipliers, setMultipliers] = useState<any[]>([]);
   const [sprintConfigs, setSprintConfigs] = useState<any[]>([]);
-  
-  // Auto-load sprint configs on mount
-  useEffect(() => {
-    if (sprintConfigs.length === 0) {
-      const configs = generateSampleSprintConfigs();
-      setSprintConfigs(configs);
-      console.log("✅ Auto-loaded 2025 sprint configurations");
-    }
-  }, []);
-  
   const [filters, setFilters] = useState<Filters>({
     searchAssignee: "",
     selectedProject: null,
@@ -591,7 +580,7 @@ const Dashboard = () => {
             </div>
 
             <div className="mt-6">
-              <Heatmap data={heatmapData} title="Project × Sprint Heatmap" tickets={tickets} />
+              <Heatmap data={heatmapData} title="Project × Sprint Heatmap" />
             </div>
  
             {/* Feature Timeline */}

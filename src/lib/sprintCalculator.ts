@@ -64,37 +64,22 @@ export const calculateSprintFromDates = (
         return `Sprint ${String(config.sprintNumber).padStart(2, '0')}`; // Format as "Sprint 01"
       }
     }
-    
-    // If date is AFTER the last configured sprint, assign to the last sprint (future work)
-    const lastConfig = sortedConfigs[sortedConfigs.length - 1];
-    if (referenceDate > new Date(lastConfig.endDate)) {
-      return `Sprint ${String(lastConfig.sprintNumber).padStart(2, '0')}`;
-    }
-    
-    // If date is BEFORE the first configured sprint, return N/A
-    const firstConfig = sortedConfigs[0];
-    if (referenceDate < new Date(firstConfig.startDate)) {
-      return "#N/A";
-    }
   }
 
-  // Fallback ONLY for projects without sprint configs
-  // (Don't use fallback if configs exist but date doesn't match)
-  if (projectConfigs.length === 0) {
-    // Calculate sprint based on 2-week cycles from a reference date
-    const year = referenceDate.getFullYear();
-    const yearStart = new Date(year, 0, 1);
-    
-    const daysSinceYearStart = Math.floor(
-      (referenceDate.getTime() - yearStart.getTime()) / (1000 * 60 * 60 * 24)
-    );
-    
-    // Calculate sprint number (2-week cycles = 14 days), max 26 per year
-    const sprintNumber = Math.min(Math.floor(daysSinceYearStart / 14) + 1, 26);
-    return `Sprint ${String(sprintNumber).padStart(2, '0')}`;
-  }
+  // Fallback: Calculate sprint based on 2-week cycles from a reference date
+  // Using the year's start date to ensure sprints stay within reasonable bounds
+  const year = referenceDate.getFullYear();
+  const yearStart = new Date(year, 0, 1); // January 1st of the ticket's year
+  
+  const daysSinceYearStart = Math.floor(
+    (referenceDate.getTime() - yearStart.getTime()) / (1000 * 60 * 60 * 24)
+  );
+  
+  // Calculate sprint number (2-week cycles = 14 days)
+  // Max 26 sprints per year (52 weeks / 2)
+  const sprintNumber = Math.min(Math.floor(daysSinceYearStart / 14) + 1, 26);
 
-  return "#N/A";
+  return `Sprint ${String(sprintNumber).padStart(2, '0')}`; // Format as "Sprint 01"
 };
 
 /**
@@ -129,26 +114,6 @@ export const parseDate = (dateStr: string | undefined | null): Date | null => {
   try {
     const date = new Date(dateStr);
     if (!isNaN(date.getTime())) {
-      // Validate that the date didn't overflow (e.g., 2025-12-43 becomes 2026-01-12)
-      // Check if the parsed date matches the input format
-      const dateStrNormalized = dateStr.trim();
-      
-      // If input looks like YYYY-MM-DD format, validate day is correct
-      if (dateStrNormalized.match(/^\d{4}-\d{2}-\d{2}/)) {
-        const parts = dateStrNormalized.split('-');
-        const inputYear = parseInt(parts[0], 10);
-        const inputMonth = parseInt(parts[1], 10);
-        const inputDay = parseInt(parts[2].substring(0, 2), 10); // Take first 2 digits
-        
-        // Check if parsed date matches input (catches overflow like Dec 43 -> Jan 12)
-        if (date.getFullYear() !== inputYear || 
-            date.getMonth() + 1 !== inputMonth || 
-            date.getDate() !== inputDay) {
-          console.warn(`⚠️ Invalid date detected (overflow): "${dateStr}" -> parsed as ${date.toISOString().split('T')[0]}`);
-          return null; // Reject invalid dates
-        }
-      }
-      
       return date;
     }
   } catch (e) {
@@ -161,7 +126,7 @@ export const parseDate = (dateStr: string | undefined | null): Date | null => {
 /**
  * Generate sprint configurations based on actual 2025 schedule
  * Sprint dates are adjusted +1 day from original schedule
- * Sprint 01 starts 2025-01-09, Sprint 25 ends 2026-01-06
+ * Sprint 01 starts 2025-01-09, Sprint 25 ends 2025-12-31
  */
 export const generateSampleSprintConfigs = (): SprintConfig[] => {
   const configs: SprintConfig[] = [];
@@ -194,7 +159,7 @@ export const generateSampleSprintConfigs = (): SprintConfig[] => {
     { sprint: 22, start: "2025-11-13", end: "2025-11-26" },
     { sprint: 23, start: "2025-11-27", end: "2025-12-10" },
     { sprint: 24, start: "2025-12-11", end: "2025-12-24" },
-    { sprint: 25, start: "2025-12-25", end: "2026-01-06" },
+    { sprint: 25, start: "2025-12-25", end: "2025-12-31" },
   ];
 
   projects.forEach((project) => {
