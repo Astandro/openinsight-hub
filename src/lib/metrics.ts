@@ -42,8 +42,27 @@ const getWeekNumber = (date: Date): number => {
   return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
 };
 
+// Build a map of feature ID -> feature ticket for efficient lookups
+const buildFeatureMap = (tickets: ParsedTicket[]): Map<string, ParsedTicket> => {
+  const featureMap = new Map<string, ParsedTicket>();
+  
+  // Find all Feature-type tickets by normalizedType
+  // Note: Features might have parentId in some export formats (pointing to themselves or epics)
+  // We identify Features by their type, not by absence of parentId
+  tickets.forEach(ticket => {
+    if (ticket.normalizedType === "Feature") {
+      featureMap.set(ticket.id, ticket);
+    }
+  });
+  
+  return featureMap;
+};
+
 // Helper function to get feature contributions for an assignee
 const getFeatureContributions = (tickets: ParsedTicket[], assignee: string): FeatureContribution[] => {
+  // Build feature lookup map for efficient parent lookups
+  const featureMap = buildFeatureMap(tickets);
+  
   // Track which FEATURE-level tickets this user contributed to
   const featureSet = new Set<string>();
   
@@ -53,7 +72,8 @@ const getFeatureContributions = (tickets: ParsedTicket[], assignee: string): Fea
   // Collect unique FEATURE IDs (from child tickets' parentId or if user is on FEATURE itself)
   assigneeTickets.forEach(ticket => {
     if (ticket.parentId) {
-      // This is a child ticket (User Story, Bug, etc.) - track its parent FEATURE
+      // This is a child ticket (User Story, Bug, Task, etc.) - track its parent FEATURE
+      // The parentId points to the Feature ticket's ID
       featureSet.add(ticket.parentId);
     } else if (ticket.normalizedType === "Feature") {
       // This user worked on the FEATURE ticket itself
@@ -62,23 +82,23 @@ const getFeatureContributions = (tickets: ParsedTicket[], assignee: string): Fea
   });
   
   // Now build the contribution list from unique FEATURE-level tickets
-  // Use a Map to group by feature NAME (to combine duplicates)
+  // Use a Map to group by feature NAME (to combine duplicates with same name)
   const contributionMap = new Map<string, FeatureContribution>();
   
   featureSet.forEach(featureId => {
-    // Find the FEATURE ticket (normalizedType === "Feature" and no parentId)
-    const parentFeature = tickets.find(t => 
-      t.id === featureId && 
-      !t.parentId && 
-      t.normalizedType === "Feature"
-    );
+    // Find the FEATURE ticket using the feature map
+    const parentFeature = featureMap.get(featureId);
     
     if (!parentFeature) {
+      // Feature ticket not found - this could happen if:
+      // 1. The parent feature is in a different dataset
+      // 2. The parent feature hasn't been uploaded yet
+      // 3. There's a data inconsistency
       return;
     }
     
     // Calculate total story points from this user's work on child tickets ONLY
-    // (User Story, Bug, etc. under this FEATURE)
+    // (User Story, Bug, Task, etc. under this FEATURE)
     const userChildWork = tickets.filter(t => 
       t.assignee === assignee && 
       t.parentId === featureId

@@ -18,6 +18,12 @@ export type StatusType = "Closed" | "Open" | "In Progress" | "Review" | string;
 export type TicketType = "Bug" | "Feature" | "Task" | "Story" | string;
 
 export interface CSVRow {
+  // ID field - support multiple column names used by different systems
+  ID?: string;
+  "#"?: string;
+  "Work Package ID"?: string;
+  "Ticket ID"?: string;
+  id?: string;
   Assignee: string;
   Function?: FunctionType; // Optional - will be looked up from multiplier database
   Status: StatusType;
@@ -33,7 +39,7 @@ export interface CSVRow {
   "Finish Date"?: string; // Alternative due date column name
   "End Date"?: string;    // Alternative due date column name
   Subject: string;
-  Parent?: string;
+  Parent?: string;  // Parent feature ID - points to the parent ticket's ID
   Multiplier?: string; // Optional - will be looked up from multiplier database
 }
 

@@ -16,6 +16,7 @@ import { FeatureTimeline } from "@/components/Dashboard/FeatureTimeline";
 import { UtilizationTrendline } from "@/components/Dashboard/UtilizationTrendline";
 import { TeamEfficiency } from "@/components/Dashboard/TeamEfficiency";
 import { DeliverySpeed } from "@/components/Dashboard/DeliverySpeed";
+import { CarryOverInsights } from "@/components/Dashboard/CarryOverInsights";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { FileDown, RefreshCw, Settings, LogIn, Download, X, RotateCcw } from "lucide-react";
@@ -90,9 +91,7 @@ const Dashboard = () => {
           isBug: ticket.isBug || false,
           isRevise: ticket.isRevise || false,
           cycleDays: ticket.cycleDays || null,
-          normalizedType: ticket.normalizedType === "Other" && ticket.type?.toLowerCase().includes("story") 
-            ? "Feature" 
-            : ticket.normalizedType || "Other",
+          normalizedType: ticket.normalizedType || "Other",
           severity: ticket.severity || "Medium",
           parentId: ticket.parentId || undefined,
           multiplier: ticket.multiplier || 1.0
@@ -207,22 +206,21 @@ const Dashboard = () => {
     }
     const assignees = Array.from(new Set(filteredTickets.map((t) => t.assignee)));
     
-    // For feature contributions, we want to respect the PROJECT filter only
-    // (not function or time period), so users can see all features in a project
-    const projectFilteredTickets = filters.selectedProject 
-      ? tickets.filter(t => t.project === filters.selectedProject)
-      : tickets;
+    // For feature contributions, we need ALL tickets (not filtered by project)
+    // This is because parent Feature tickets might be in a different "project" 
+    // than their child tickets (e.g., Features in "Business Support" with children in "Orion")
+    // The child-to-parent relationship needs access to all tickets to find parent features
     
     // Calculate metrics from filteredTickets for performance metrics
-    // But feature contributions will be calculated from projectFilteredTickets
+    // But feature contributions will be calculated from ALL tickets to find parent features
     const metrics = assignees.map((assignee) => {
       // Find multiplier for this person (for performance/z-score calculations only, NOT for utilization)
       const multiplierEntry = multipliers.find((m: any) => m.name?.toLowerCase() === assignee.toLowerCase());
       const multiplier = multiplierEntry?.formula || 1.0;
-      return calculateAssigneeMetrics(filteredTickets, assignee, projectFilteredTickets, multiplier);
+      return calculateAssigneeMetrics(filteredTickets, assignee, tickets, multiplier);
     });
     return calculateEnhancedMetrics(metrics, thresholds, filteredTickets, multipliers);
-  }, [tickets, filteredTickets, thresholds, filters.selectedProject]);
+  }, [tickets, filteredTickets, thresholds, multipliers]);
 
   const functionMetrics = useMemo(() => {
     if (!filteredTickets || filteredTickets.length === 0) {
@@ -548,7 +546,22 @@ const Dashboard = () => {
             <AlertsBar alerts={alerts} />
 
             {/* Function Performance */}
-            <FunctionPerformance tickets={filteredTickets} selectedFunction={filters.selectedFunction} selectedProject={filters.selectedProject} />
+            <FunctionPerformance 
+              tickets={filteredTickets} 
+              selectedFunction={filters.selectedFunction} 
+              selectedProject={filters.selectedProject}
+              timePeriod={filters.timePeriod}
+            />
+
+            {/* Carry-Over Insights - Shows for Orion/Aman/Threat Intel with BE/FE/APPS */}
+            <div className="mt-6">
+              <CarryOverInsights 
+                tickets={filteredTickets}
+                selectedProject={filters.selectedProject}
+                selectedFunction={filters.selectedFunction}
+                multipliers={multipliers}
+              />
+            </div>
 
             {/* Utilization Trendline */}
             <div className="mt-6">

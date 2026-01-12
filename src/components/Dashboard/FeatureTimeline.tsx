@@ -237,11 +237,26 @@ export const FeatureTimeline = ({ tickets, filters }: FeatureTimelineProps) => {
   const timelineFeatures: TimelineFeature[] = useMemo(() => {
     const featureMap = new Map<string, TimelineFeature>();
     
-    // Step 1: Find ALL child tickets and apply filters to them
-    const allChildTickets = tickets.filter(t => t.parentId && t.closedDate);
+    // Step 1: Build a map of all Feature tickets by ID for efficient lookups
+    // A Feature is identified by normalizedType === "Feature"
+    // Note: Features might have parentId pointing to themselves in some export formats
+    const allFeatureTickets = new Map<string, ParsedTicket>();
+    tickets.forEach(t => {
+      if (t.normalizedType === "Feature") {
+        allFeatureTickets.set(t.id, t);
+      }
+    });
+    
+    // Step 2: Find ALL child tickets (tickets with parentId pointing to a Feature)
+    // A ticket is a "child" if it has parentId AND that parentId points to a Feature
+    const allChildTickets = tickets.filter(t => {
+      if (!t.parentId || !t.closedDate) return false;
+      // The parent should be a Feature ticket
+      return allFeatureTickets.has(t.parentId);
+    });
     const filteredChildTickets = applyFilters(allChildTickets, filters);
     
-    // Step 2: Identify which FEATURES have at least one filtered child ticket
+    // Step 3: Identify which FEATURES have at least one filtered child ticket
     const featuresWithFilteredChildren = new Set<string>();
     filteredChildTickets.forEach(child => {
       if (child.parentId) {
@@ -249,10 +264,10 @@ export const FeatureTimeline = ({ tickets, filters }: FeatureTimelineProps) => {
       }
     });
     
-    // Step 3: Get ALL FEATURE-level tickets that have filtered children
+    // Step 4: Get ALL FEATURE-level tickets that have filtered children
     // Also apply project filter to features if set
     const relevantFeatures = tickets.filter(t => {
-      const isFeature = t.normalizedType === "Feature" && !t.parentId && t.closedDate;
+      const isFeature = t.normalizedType === "Feature" && t.closedDate;
       const hasFilteredChildren = featuresWithFilteredChildren.has(t.id);
       const matchesProject = !filters.selectedProject || t.project === filters.selectedProject;
       return isFeature && hasFilteredChildren && matchesProject;
@@ -365,10 +380,28 @@ export const FeatureTimeline = ({ tickets, filters }: FeatureTimelineProps) => {
       calcEndDate.setDate(calcEndDate.getDate() + 7);
     } else {
       // Use filter-based bounds
-      // Get the most recent year from the actual data instead of current year
-      const dataYear = timelineFeatures.length > 0 
-        ? Math.max(...timelineFeatures.map(f => Math.max(f.startDate.getFullYear(), f.endDate.getFullYear())))
-        : new Date().getFullYear();
+      // Get the year with the MOST features (not just max year)
+      // This prevents issues when a few features spill into next year
+      const yearCounts = new Map<number, number>();
+      timelineFeatures.forEach(f => {
+        // Count both start and end years
+        const startYear = f.startDate.getFullYear();
+        const endYear = f.endDate.getFullYear();
+        yearCounts.set(startYear, (yearCounts.get(startYear) || 0) + 1);
+        if (endYear !== startYear) {
+          yearCounts.set(endYear, (yearCounts.get(endYear) || 0) + 1);
+        }
+      });
+      
+      // Find year with most features
+      let dataYear = new Date().getFullYear();
+      let maxCount = 0;
+      yearCounts.forEach((count, year) => {
+        if (count > maxCount) {
+          maxCount = count;
+          dataYear = year;
+        }
+      });
       
       if (filters.timePeriod === "current_year") {
         calcStartDate = new Date(dataYear, 0, 1); // January 1st

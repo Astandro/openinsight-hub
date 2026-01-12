@@ -3,6 +3,37 @@ import { CSVRow, ParsedTicket, MultiplierEntry, SprintConfig, FunctionType } fro
 import { getMultiplierEntryByName } from "./multiplierManager";
 import { usesDateBasedSprints, calculateSprintRange, parseDate } from "./sprintCalculator";
 
+// Extract function from Subject line pattern like "[Project_Version] FE - Task description"
+const extractFunctionFromSubject = (subject: string): FunctionType | null => {
+  if (!subject) return null;
+  
+  // Pattern: [anything] FUNCTION - rest
+  // Common functions: QA, FE, BE, INFRA, DESIGNER, PRODUCT, UX WRITER, APPS, OPERATION
+  const functionPatterns: { pattern: RegExp; func: FunctionType }[] = [
+    { pattern: /\]\s*QA\s*[-–]/i, func: "QA" },
+    { pattern: /\]\s*FE\s*[-–]/i, func: "FE" },
+    { pattern: /\]\s*BE\s*[-–]/i, func: "BE" },
+    { pattern: /\]\s*INFRA\s*[-–]/i, func: "INFRA" },
+    { pattern: /\]\s*DESIGNER\s*[-–]/i, func: "DESIGNER" },
+    { pattern: /\]\s*PRODUCT\s*[-–]/i, func: "PRODUCT" },
+    { pattern: /\]\s*UX\s*WRITER\s*[-–]/i, func: "UX WRITER" },
+    { pattern: /\]\s*APPS\s*[-–]/i, func: "APPS" },
+    { pattern: /\]\s*OPERATION\s*[-–]/i, func: "OPERATION" },
+    { pattern: /\]\s*FOUNDRY\s*[-–]/i, func: "FOUNDRY" },
+    { pattern: /\]\s*RESEARCHER\s*[-–]/i, func: "RESEARCHER" },
+    { pattern: /\]\s*BUSINESS\s*SUPPORT\s*[-–]/i, func: "BUSINESS SUPPORT" },
+    { pattern: /\]\s*EM\s*[-–]/i, func: "ENGINEERING MANAGER" },
+  ];
+  
+  for (const { pattern, func } of functionPatterns) {
+    if (pattern.test(subject)) {
+      return func;
+    }
+  }
+  
+  return null;
+};
+
 export const parseCSV = (
   csvText: string,
   multiplierDB: MultiplierEntry[] = [],
@@ -116,32 +147,32 @@ const parseRow = (
                      subject.toLowerCase().includes("revise");
     const isBug = normalizedType === "Bug" || type.toLowerCase().includes("bug");
 
-    // Generate a unique ID based on the hierarchy:
-    // - Row with Type="Feature" AND has Parent value → This is the PARENT feature, use Parent as its ID
-    // - Row with Type="User story"/"Bug"/etc AND has Parent value → These are CHILDREN, Parent is their parentId
+    // Get the ticket ID from CSV - support multiple column names
+    // Priority: ID, #, Work Package ID, Ticket ID, id
     const title = row.Subject || "";
+    const csvId = row.ID || row["#"] || row["Work Package ID"] || row["Ticket ID"] || row.id;
+    
     let id: string;
     let parentId: string | undefined = undefined;
     
-    if (!row.Parent) {
-      // No parent - this is an independent ticket
-      id = `TICKET-${Math.random().toString(36).substr(2, 9)}`;
-      parentId = undefined;
+    if (csvId) {
+      // Use the actual ID from CSV
+      id = String(csvId).trim();
     } else {
-      // Has a parent value in CSV
-      if (normalizedType === "Feature") {
-        // This row IS the top-level FEATURE - use Parent column value as its ID
-        id = row.Parent;
-        parentId = undefined; // It IS the parent, so no parentId
-      } else {
-        // This is a child ticket (User Story, Bug, etc.) - generate unique ID
-        id = `${row.Parent}-${type.toUpperCase()}-${Math.random().toString(36).substr(2, 6)}`;
-        parentId = row.Parent; // Parent column value is its parentId
-      }
+      // No ID in CSV - generate a unique one
+      id = `TICKET-${Math.random().toString(36).substr(2, 9)}`;
+    }
+    
+    // Set parentId if this ticket has a Parent value
+    // Parent column contains the ID of the parent Feature ticket
+    if (row.Parent && row.Parent.trim()) {
+      parentId = String(row.Parent).trim();
+    } else {
+      parentId = undefined;
     }
 
     // Get function AND multiplier from database
-    // Priority: 1. Multiplier Database, 2. CSV columns, 3. Skip (warn user)
+    // Priority: 1. Multiplier Database, 2. CSV Function column, 3. Extract from Subject, 4. Default to "OTHER"
     let personFunction: FunctionType | undefined;
     let multiplier = 1.0;
     
@@ -159,13 +190,18 @@ const parseRow = (
       personFunction = row.Function;
       multiplier = row.Multiplier ? parseFloat(row.Multiplier) : 1.0;
     } else {
-      // Not in database AND no Function in CSV - this person is not properly configured
-      // Skip this ticket or log warning
-      if (multiplierDB.length > 0) {
-        // Only warn if multiplier DB exists but person not found
-        console.warn(`⚠️ "${assigneeName}" not found in multiplier database and no Function in CSV. Skipping ticket.`);
+      // Try to extract function from Subject line pattern like "[Project] FE - Task"
+      const extractedFunction = extractFunctionFromSubject(subject);
+      if (extractedFunction) {
+        personFunction = extractedFunction;
+        multiplier = 1.0; // Default multiplier when extracted from subject
+      } else {
+        // Last resort: use a default function instead of skipping
+        // This ensures all tickets are processed
+        personFunction = "BE" as FunctionType; // Default to BE if we can't determine
+        multiplier = 1.0;
+        console.warn(`⚠️ "${assigneeName}" - function could not be determined, defaulting to BE`);
       }
-      return null; // Skip this ticket
     }
 
     const ticket = {
