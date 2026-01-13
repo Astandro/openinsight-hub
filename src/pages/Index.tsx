@@ -4,6 +4,7 @@ import { calculateAssigneeMetrics, calculateEnhancedMetrics, calculateFunctionMe
 import { ParsedTicket, Filters, FunctionType, Thresholds } from "@/types/openproject";
 import { loadThresholds, saveThresholds } from "@/lib/thresholds";
 import { generateAlerts } from "@/lib/alerts";
+import { isValidAssignee } from "@/lib/utils";
 import { CSVUpload } from "@/components/Dashboard/CSVUpload";
 import { FilterSidebar } from "@/components/Dashboard/FilterSidebar";
 import { KPICards } from "@/components/Dashboard/KPICards";
@@ -78,7 +79,9 @@ const Index = () => {
   const filteredTickets = useMemo(() => applyFilters(tickets, filters), [tickets, filters]);
 
   const assigneeMetrics = useMemo(() => {
-    const assignees = Array.from(new Set(filteredTickets.map((t) => t.assignee)));
+    // Filter out invalid assignees (teams, unassigned, deleted users, etc.)
+    const assignees = Array.from(new Set(filteredTickets.map((t) => t.assignee)))
+      .filter(assignee => isValidAssignee(assignee));
     const metrics = assignees.map((assignee) => calculateAssigneeMetrics(filteredTickets, assignee));
     return calculateEnhancedMetrics(metrics, thresholds, filteredTickets);
   }, [filteredTickets, thresholds]);

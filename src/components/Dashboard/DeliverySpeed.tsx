@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Zap, Info, Award, AlertCircle } from "lucide-react";
 import { ParsedTicket, FunctionType } from "@/types/openproject";
+import { isValidAssignee } from "@/lib/utils";
 import {
   BarChart,
   Bar,
@@ -75,10 +76,11 @@ export const DeliverySpeed = ({
 }: DeliverySpeedProps) => {
   const speedData = useMemo(() => {
     // Filter for closed tickets with User Story or Bug type only
+    // Also filter out invalid assignees (teams, unassigned, deleted users)
     const closedTickets = tickets.filter(
       (t) => t.status === "Closed" && 
             t.storyPoints > 0 &&
-            t.assignee !== "#N/A" &&
+            isValidAssignee(t.assignee) &&
             t.sprintClosed !== "#N/A" &&
             t.sprintClosed !== "" &&
             (t.normalizedType === "Feature" || t.normalizedType === "Bug" || 
@@ -225,7 +227,7 @@ export const DeliverySpeed = ({
     const closedTickets = tickets.filter(
       (t) => t.status === "Closed" && 
             t.storyPoints > 0 &&
-            t.assignee !== "#N/A" &&
+            isValidAssignee(t.assignee) &&
             t.sprintClosed !== "#N/A" &&
             t.sprintClosed !== "" &&
             t.function !== "#N/A" &&

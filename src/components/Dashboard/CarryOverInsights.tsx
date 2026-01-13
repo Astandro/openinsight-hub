@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { useMemo } from "react";
 import { AlertTriangle, TrendingDown, TrendingUp, Clock, Users, BarChart3 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LineChart, Line, ComposedChart, Area } from "recharts";
+import { isValidAssignee as isValidAssigneeBase } from "@/lib/utils";
 
 interface CarryOverInsightsProps {
   tickets: ParsedTicket[];
@@ -13,22 +14,12 @@ interface CarryOverInsightsProps {
   multipliers?: MultiplierEntry[];
 }
 
-// Invalid assignee patterns to filter out
-const INVALID_ASSIGNEE_PATTERNS = [
-  "team", "unassigned", "frontend", "backend", "tester", "orion", "aman", 
-  "threat", "product", "chatbot", "website", "infra", "operation"
-];
-
-// Check if an assignee name is valid (a real person)
-const isValidAssignee = (assignee: string, multipliers?: MultiplierEntry[]): boolean => {
-  if (!assignee || assignee.trim() === "") return false;
+// Check if an assignee name is valid (a real person) - extended with multiplier check
+const isValidAssigneeWithMultipliers = (assignee: string, multipliers?: MultiplierEntry[]): boolean => {
+  // First, use the base validation (filters teams, unassigned, deleted, etc.)
+  if (!isValidAssigneeBase(assignee)) return false;
   
   const lowerAssignee = assignee.toLowerCase().trim();
-  
-  // Filter out common invalid patterns
-  if (INVALID_ASSIGNEE_PATTERNS.some(pattern => lowerAssignee.includes(pattern))) {
-    return false;
-  }
   
   // If we have multipliers, check if the assignee is in the list
   if (multipliers && multipliers.length > 0) {
@@ -99,7 +90,7 @@ export const CarryOverInsights = ({ tickets, selectedProject, selectedFunction, 
 
     // Filter to only include tickets with valid assignees (real people, not team names)
     // This ensures consistency between overall stats and contributor breakdown
-    relevantTickets = relevantTickets.filter(t => isValidAssignee(t.assignee, multipliers));
+    relevantTickets = relevantTickets.filter(t => isValidAssigneeWithMultipliers(t.assignee, multipliers));
 
     if (relevantTickets.length === 0) return null;
 
@@ -169,7 +160,7 @@ export const CarryOverInsights = ({ tickets, selectedProject, selectedFunction, 
       const assignee = ticket.assignee;
       
       // Skip invalid assignees (team names, project names, unassigned, etc.)
-      if (!isValidAssignee(assignee, multipliers)) {
+      if (!isValidAssigneeWithMultipliers(assignee, multipliers)) {
         return;
       }
       

@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Users, TrendingUp, Info } from "lucide-react";
 import { ParsedTicket, FunctionType } from "@/types/openproject";
+import { isValidAssignee } from "@/lib/utils";
 import {
   ComposedChart,
   Bar,
@@ -41,7 +42,7 @@ export const TeamEfficiency = ({
       (t) => t.status === "Closed" && 
             t.closedDate && 
             t.sprintClosed !== "#N/A" && 
-            t.assignee !== "#N/A" &&
+            isValidAssignee(t.assignee) &&
             t.function !== "#N/A"
     );
     

@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TrendingUp, Users, Info, BarChart3, User } from "lucide-react";
 import { ParsedTicket, FunctionType } from "@/types/openproject";
+import { isValidAssignee } from "@/lib/utils";
 import {
   LineChart,
   Line,
@@ -118,8 +119,8 @@ export const UtilizationTrendline = ({
     const closedTickets = tickets.filter(
       t => t.status === "Closed" && 
            t.sprintClosed && 
-            t.sprintClosed !== "#N/A" && 
-           t.assignee !== "#N/A"
+           t.sprintClosed !== "#N/A" && 
+           isValidAssignee(t.assignee)
     );
     
     if (closedTickets.length === 0) {
@@ -239,7 +240,7 @@ export const UtilizationTrendline = ({
       t => t.status === "Closed" && 
            t.sprintClosed && 
            t.sprintClosed !== "#N/A" && 
-           t.assignee !== "#N/A"
+           isValidAssignee(t.assignee)
     );
     
     if (closedTickets.length === 0) return [];

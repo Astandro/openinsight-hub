@@ -6,6 +6,7 @@ import { ParsedTicket, Filters, FunctionType, Thresholds } from "@/types/openpro
 // Removed localStorage threshold imports - now using server-based thresholds
 import { generateAlerts } from "@/lib/alerts";
 import { FUNCTIONS } from "@/lib/constants";
+import { isValidAssignee } from "@/lib/utils";
 import { FilterSidebar } from "@/components/Dashboard/FilterSidebar";
 import { KPICards } from "@/components/Dashboard/KPICards";
 import { FunctionPerformance } from "@/components/Dashboard/FunctionPerformance";
@@ -204,7 +205,9 @@ const Dashboard = () => {
     if (!filteredTickets || filteredTickets.length === 0) {
       return [];
     }
-    const assignees = Array.from(new Set(filteredTickets.map((t) => t.assignee)));
+    // Filter out invalid assignees (teams, unassigned, deleted users, etc.)
+    const assignees = Array.from(new Set(filteredTickets.map((t) => t.assignee)))
+      .filter(assignee => isValidAssignee(assignee));
     
     // For feature contributions, we need ALL tickets (not filtered by project)
     // This is because parent Feature tickets might be in a different "project" 
