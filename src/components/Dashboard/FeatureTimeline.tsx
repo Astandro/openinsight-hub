@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { User, Building, Target, Clock, CalendarIcon, Star } from "lucide-react";
 import { ParsedTicket, Filters } from "@/types/openproject";
-import { applyFilters } from "@/lib/metrics";
 
 interface FeatureTimelineProps {
   tickets: ParsedTicket[];
@@ -24,6 +23,20 @@ interface TimelineFeature {
   endDate: Date;
   duration: number; // in days
   ticketCount: number; // Number of tickets merged
+  reviseCount: number;
+  bugCount: number;
+  cycleTimes: number[];
+  assigneeTicketCounts: Record<string, number>;
+  childStartDate: Date | null;
+  childEndDate: Date | null;
+  reviseRate: number;
+  bugRate: number;
+  avgCycleTime: number;
+  medianCycleTime: number;
+  leadTimeDays: number;
+  avgStoryPoints: number;
+  ticketsPerContributor: number;
+  topContributor?: { name: string; ticketCount: number; share: number };
 }
 
 const getFeatureColor = (index: number) => {
@@ -57,6 +70,104 @@ const getDaysBetween = (start: Date, end: Date) => {
   return Math.ceil(timeDiff / (1000 * 3600 * 24));
 };
 
+const formatPercent = (value: number) => `${(value * 100).toFixed(1)}%`;
+
+const formatNumber = (value: number) => {
+  const fixed = value.toFixed(1);
+  return fixed.endsWith(".0") ? fixed.slice(0, -2) : fixed;
+};
+
+const getMedian = (values: number[]) => {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 0) {
+    return (sorted[mid - 1] + sorted[mid]) / 2;
+  }
+  return sorted[mid];
+};
+
+const getTicketActivityDate = (ticket: ParsedTicket) => {
+  return ticket.closedDate ?? ticket.createdDate;
+};
+
+const applyTimelineFilters = (tickets: ParsedTicket[], filters: Filters) => {
+  let filtered = tickets;
+
+  if (filters.searchAssignee) {
+    filtered = filtered.filter((t) =>
+      t.assignee.toLowerCase().includes(filters.searchAssignee.toLowerCase())
+    );
+  }
+
+  if (filters.selectedProject) {
+    filtered = filtered.filter((t) => t.project === filters.selectedProject);
+  }
+
+  if (filters.selectedFunction) {
+    filtered = filtered.filter((t) => t.function === filters.selectedFunction);
+  }
+
+  if (filters.selectedSprints.length > 0) {
+    filtered = filtered.filter((t) => filters.selectedSprints.includes(t.sprintClosed));
+  }
+
+  if (filters.timePeriod !== "all") {
+    const ticketsWithDates = tickets.filter(t => getTicketActivityDate(t));
+    if (ticketsWithDates.length === 0) {
+      return filtered;
+    }
+
+    const yearCounts = new Map<number, number>();
+    ticketsWithDates.forEach(t => {
+      const activityDate = getTicketActivityDate(t);
+      if (!activityDate) return;
+      const year = activityDate.getFullYear();
+      yearCounts.set(year, (yearCounts.get(year) || 0) + 1);
+    });
+
+    let dataYear = new Date().getFullYear();
+    let maxCount = 0;
+    yearCounts.forEach((count, year) => {
+      if (count > maxCount) {
+        maxCount = count;
+        dataYear = year;
+      }
+    });
+
+    let startDate: Date;
+    let endDate: Date;
+
+    if (filters.timePeriod === "current_year") {
+      startDate = new Date(dataYear, 0, 1);
+      endDate = new Date(dataYear, 11, 31);
+    } else {
+      const quarterMap = {
+        "Q1": { start: 0, end: 2 },
+        "Q2": { start: 3, end: 5 },
+        "Q3": { start: 6, end: 8 },
+        "Q4": { start: 9, end: 11 }
+      };
+
+      const quarter = quarterMap[filters.timePeriod as keyof typeof quarterMap];
+      if (!quarter) {
+        return filtered;
+      }
+
+      startDate = new Date(dataYear, quarter.start, 1);
+      endDate = new Date(dataYear, quarter.end + 1, 0);
+    }
+
+    filtered = filtered.filter((t) => {
+      const activityDate = getTicketActivityDate(t);
+      if (!activityDate) return false;
+      return activityDate >= startDate && activityDate <= endDate;
+    });
+  }
+
+  return filtered;
+};
+
 // Memoized feature row component for better performance
 const FeatureRow = React.memo(({ 
   feature, 
@@ -85,7 +196,7 @@ const FeatureRow = React.memo(({
         </div>
       </PopoverTrigger>
       
-       <PopoverContent className="w-96" align="start">
+       <PopoverContent className="w-[28rem] max-w-[90vw]" align="start">
         <div className="space-y-4">
           <div>
             <h4 className="font-semibold text-lg">{feature.title}</h4>
@@ -126,6 +237,46 @@ const FeatureRow = React.memo(({
             </div>
           </div>
           
+          <div className="border-t pt-4">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-medium">Insights</span>
+              <span className="text-xs text-muted-foreground">Based on child tickets</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-md border bg-muted/30 p-3">
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Revise Rate</p>
+                <p className="text-sm font-semibold">{formatPercent(feature.reviseRate)}</p>
+                <p className="text-xs text-muted-foreground">{feature.reviseCount} of {feature.ticketCount} tickets</p>
+              </div>
+              <div className="rounded-md border bg-muted/30 p-3">
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Avg Cycle Time</p>
+                <p className="text-sm font-semibold">{formatNumber(feature.avgCycleTime)} days</p>
+                <p className="text-xs text-muted-foreground">Median {formatNumber(feature.medianCycleTime)} days</p>
+              </div>
+              <div className="rounded-md border bg-muted/30 p-3">
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Lead Time</p>
+                <p className="text-sm font-semibold">{formatNumber(feature.leadTimeDays)} days</p>
+                <p className="text-xs text-muted-foreground">First to last child close</p>
+              </div>
+              <div className="rounded-md border bg-muted/30 p-3">
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Bug Rate</p>
+                <p className="text-sm font-semibold">{formatPercent(feature.bugRate)}</p>
+                <p className="text-xs text-muted-foreground">{feature.bugCount} bug tickets</p>
+              </div>
+              <div className="col-span-2 rounded-md border bg-muted/30 p-3">
+                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Workload Concentration</p>
+                <p className="text-sm font-semibold">
+                  {feature.topContributor ? `${feature.topContributor.name} • ${formatPercent(feature.topContributor.share)}` : "—"}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {feature.ticketsPerContributor > 0
+                    ? `${formatNumber(feature.ticketsPerContributor)} tickets per contributor`
+                    : "No contributor data"}
+                </p>
+              </div>
+            </div>
+          </div>
+
           <div className="border-t pt-4">
             <div className="flex items-center gap-2 mb-2">
               <CalendarIcon className="h-4 w-4 text-muted-foreground" />
@@ -250,11 +401,11 @@ export const FeatureTimeline = ({ tickets, filters }: FeatureTimelineProps) => {
     // Step 2: Find ALL child tickets (tickets with parentId pointing to a Feature)
     // A ticket is a "child" if it has parentId AND that parentId points to a Feature
     const allChildTickets = tickets.filter(t => {
-      if (!t.parentId || !t.closedDate) return false;
+      if (!t.parentId) return false;
       // The parent should be a Feature ticket
       return allFeatureTickets.has(t.parentId);
     });
-    const filteredChildTickets = applyFilters(allChildTickets, filters);
+    const filteredChildTickets = applyTimelineFilters(allChildTickets, filters);
     
     // Step 3: Identify which FEATURES have at least one filtered child ticket
     const featuresWithFilteredChildren = new Set<string>();
@@ -267,7 +418,7 @@ export const FeatureTimeline = ({ tickets, filters }: FeatureTimelineProps) => {
     // Step 4: Get ALL FEATURE-level tickets that have filtered children
     // Also apply project filter to features if set
     const relevantFeatures = tickets.filter(t => {
-      const isFeature = t.normalizedType === "Feature" && t.closedDate;
+      const isFeature = t.normalizedType === "Feature";
       const hasFilteredChildren = featuresWithFilteredChildren.has(t.id);
       const matchesProject = !filters.selectedProject || t.project === filters.selectedProject;
       return isFeature && hasFilteredChildren && matchesProject;
@@ -300,6 +451,20 @@ export const FeatureTimeline = ({ tickets, filters }: FeatureTimelineProps) => {
           endDate: feature.closedDate!,
           duration: 0,
           ticketCount: 0, // Will count children only
+          reviseCount: 0,
+          bugCount: 0,
+          cycleTimes: [],
+          assigneeTicketCounts: {},
+          childStartDate: null,
+          childEndDate: null,
+          reviseRate: 0,
+          bugRate: 0,
+          avgCycleTime: 0,
+          medianCycleTime: 0,
+          leadTimeDays: 0,
+          avgStoryPoints: 0,
+          ticketsPerContributor: 0,
+          topContributor: undefined,
         });
       }
     });
@@ -331,6 +496,26 @@ export const FeatureTimeline = ({ tickets, filters }: FeatureTimelineProps) => {
         
         // Add story points from child ticket (User Story, Bug, etc.)
         featureEntry.totalStoryPoints += ticket.storyPoints;
+
+        // Track quality and cycle metrics from child tickets
+        if (ticket.isRevise) {
+          featureEntry.reviseCount += 1;
+        }
+        if (ticket.isBug) {
+          featureEntry.bugCount += 1;
+        }
+        if (ticket.cycleDays !== null) {
+          featureEntry.cycleTimes.push(ticket.cycleDays);
+        }
+        featureEntry.assigneeTicketCounts[ticket.assignee] =
+          (featureEntry.assigneeTicketCounts[ticket.assignee] || 0) + 1;
+        if (!featureEntry.childStartDate || ticket.createdDate < featureEntry.childStartDate) {
+          featureEntry.childStartDate = ticket.createdDate;
+        }
+        const activityDate = getTicketActivityDate(ticket);
+        if (!featureEntry.childEndDate || activityDate > featureEntry.childEndDate) {
+          featureEntry.childEndDate = activityDate;
+        }
         
         // Increment ticket count
         featureEntry.ticketCount += 1;
@@ -339,8 +524,8 @@ export const FeatureTimeline = ({ tickets, filters }: FeatureTimelineProps) => {
         if (ticket.createdDate < featureEntry.startDate) {
           featureEntry.startDate = ticket.createdDate;
         }
-        if (ticket.closedDate > featureEntry.endDate) {
-          featureEntry.endDate = ticket.closedDate;
+        if (activityDate > featureEntry.endDate) {
+          featureEntry.endDate = activityDate;
         }
       }
     });
@@ -349,6 +534,33 @@ export const FeatureTimeline = ({ tickets, filters }: FeatureTimelineProps) => {
     const mergedFeatures = Array.from(featureMap.values());
     mergedFeatures.forEach(feature => {
       feature.duration = getDaysBetween(feature.startDate, feature.endDate);
+      if (feature.childStartDate && feature.childEndDate) {
+        feature.leadTimeDays = getDaysBetween(feature.childStartDate, feature.childEndDate);
+      } else {
+        feature.leadTimeDays = feature.duration;
+      }
+      feature.reviseRate = feature.ticketCount > 0 ? feature.reviseCount / feature.ticketCount : 0;
+      feature.bugRate = feature.ticketCount > 0 ? feature.bugCount / feature.ticketCount : 0;
+      feature.avgCycleTime = feature.cycleTimes.length > 0
+        ? feature.cycleTimes.reduce((sum, v) => sum + v, 0) / feature.cycleTimes.length
+        : 0;
+      feature.medianCycleTime = getMedian(feature.cycleTimes);
+      feature.avgStoryPoints = feature.ticketCount > 0 ? feature.totalStoryPoints / feature.ticketCount : 0;
+      feature.ticketsPerContributor = feature.assignees.length > 0
+        ? feature.ticketCount / feature.assignees.length
+        : 0;
+      const topContributorEntry = Object.entries(feature.assigneeTicketCounts)
+        .sort((a, b) => b[1] - a[1])[0];
+      if (topContributorEntry && feature.ticketCount > 0) {
+        const [name, ticketCount] = topContributorEntry;
+        feature.topContributor = {
+          name,
+          ticketCount,
+          share: ticketCount / feature.ticketCount,
+        };
+      } else {
+        feature.topContributor = undefined;
+      }
     });
     
     return mergedFeatures.sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
